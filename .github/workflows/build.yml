@@ -30,10 +30,19 @@ jobs:
           Copy-Item dist/self-contained/KoiCardTexTool.exe pkg/
           Copy-Item dist/lite/KoiCardTexTool.exe pkg/KoiCardTexTool-lite.exe
           Copy-Item README.md, LICENSE, NOTICE pkg/
-          if (Test-Path docs) { Copy-Item docs pkg/ -Recurse }
+          New-Item -ItemType Directory -Force -Path pkg/docs | Out-Null
+          Copy-Item docs/MANUAL-*.md pkg/docs/          # 只带四语言手册
           Compress-Archive -Path pkg/* -DestinationPath "KoiCardTexTool-$ver.zip" -Force
           Get-FileHash "KoiCardTexTool-$ver.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  KoiCardTexTool-$ver.zip" } | Set-Content "KoiCardTexTool-$ver.zip.sha256"
           "VERSION=$ver" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Append checksum to release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $sha = (Get-Content "KoiCardTexTool-$env:VERSION.zip.sha256" -Raw).Trim().Split(' ')[0]
+          Add-Content .github/release-notes.md -Value ""
+          Add-Content .github/release-notes.md -Value ("**SHA256** " + $sha)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -49,6 +58,4 @@ jobs:
           files: |
             KoiCardTexTool-*.zip
             KoiCardTexTool-*.zip.sha256
-          body: |
-            Download `KoiCardTexTool-${{ env.VERSION }}.zip` below.
-            解压即用（自包含版不用装 .NET）；`-lite.exe` 需要 .NET 8 桌面运行时。
+          body_path: .github/release-notes.md
