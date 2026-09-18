@@ -1,0 +1,38 @@
+Third-party notices
+===================
+
+This project is licensed under the MIT License (see LICENSE). It contains no
+third-party binaries; the only native calls are to Windows system DLLs
+(user32 / dwmapi / uxtheme / kernel32).
+
+Algorithmic references
+----------------------
+
+1. Optimal JPEG Huffman tables  (src/KoiCardTexTool/JpegOpt.cs)
+   The table-generation algorithm follows libjpeg's jpeg_gen_optimal_table()
+   (including the 16-bit code-length limit and the 256 pseudo-symbol step).
+
+       libjpeg  --  Copyright (C) 1991-2020, Thomas G. Lane, Guido Vollbeding
+                    Independent JPEG Group (IJG) license.
+                    https://www.ijg.org/
+
+   The IJG licence permits use in both free and commercial software provided
+   the authors are acknowledged and the software is not misrepresented as
+   being from the IJG. This notice serves as that acknowledgement.
+
+2. PNG compression
+   Uses .NET's System.IO.Compression.DeflateStream (zlib-ng inside .NET 8,
+   zlib licence) plus an adaptive-filter and channel-reduction pass implemented
+   in this repository (src/KoiCardTexTool/PngEnc.cs). No zlib source or binary
+   is bundled.
+
+3. Radiance HDR (RGBE) codec  (src/KoiCardTexTool/Hdr.cs)
+   Implemented from the Radiance file format specification (Greg Ward).
+   Uses the official setcolr()/colr_color() round-trip formulas.
+
+Trademarks
+----------
+
+"Koikatsu" and related names are trademarks of their respective owners.
+This is an unofficial, fan-made utility and is not affiliated with, endorsed
+by, or sponsored by the game's developers or publishers.

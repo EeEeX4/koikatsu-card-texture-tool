@@ -1,0 +1,9 @@
+# 统一行尾：源码在 Windows 上用 CRLF，shell 脚本用 LF
+* text=auto
+*.cs   text eol=crlf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.sh   text eol=lf
+*.png  binary
+*.ico  binary
+*.exe  binary

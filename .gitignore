@@ -1,0 +1,28 @@
+# 构建产物
+dist/
+bin/
+obj/
+*.user
+*.suo
+
+# 运行期生成（绿色版放在 exe 旁边）
+ui-lang.txt
+ui-theme.txt
+ui-layout.json
+plan_maintex.json
+preset/
+
+# 绝对不要提交：游戏素材、卡片、压缩产物
+*.zipmod
+*.unity3d
+*.dds
+CardA*.png
+out/
+output/
+*.log
+
+# Release 资产不进仓库（放 GitHub Releases）
+pkg/
+dist/
+KoiCardTexTool-*.zip
+KoiCardTexTool-*.zip.sha256

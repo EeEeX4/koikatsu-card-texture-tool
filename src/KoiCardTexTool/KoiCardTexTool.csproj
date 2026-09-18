@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>KoiCardTexTool</AssemblyName>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <RootNamespace>KoiCardTexTool</RootNamespace>
+    <Version>1.0</Version>
+    <Product>Koikatsu Coordinate/Chara Texture Optimization Tool</Product>
+    <AssemblyTitle>Koikatsu Coordinate/Chara Texture Optimization Tool</AssemblyTitle>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <CodePage>65001</CodePage>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 注意：不要设 InvariantGlobalization=true！WinForms 在 globalization-invariant 模式下不受支持，
+         会在启动/打开对话框时抛 CultureNotFoundException: 1033 (0x0409) is an invalid culture identifier -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

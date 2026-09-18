@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build (self-contained + lite)
+        shell: pwsh
+        run: ./tools/build.ps1
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path src/KoiCardTexTool/KoiCardTexTool.csproj -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          $tag = "$ver"
+          New-Item -ItemType Directory -Force -Path pkg | Out-Null
+          Copy-Item dist/self-contained/KoiCardTexTool.exe pkg/
+          Copy-Item dist/lite/KoiCardTexTool.exe pkg/KoiCardTexTool-lite.exe
+          Copy-Item README.md, LICENSE, NOTICE pkg/
+          if (Test-Path docs) { Copy-Item docs pkg/ -Recurse }
+          Compress-Archive -Path pkg/* -DestinationPath "KoiCardTexTool-$ver.zip" -Force
+          Get-FileHash "KoiCardTexTool-$ver.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  KoiCardTexTool-$ver.zip" } | Set-Content "KoiCardTexTool-$ver.zip.sha256"
+          "VERSION=$ver" | Out-File -Append $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KoiCardTexTool-${{ env.VERSION }}
+          path: |
+            KoiCardTexTool-*.zip
+            KoiCardTexTool-*.zip.sha256
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            KoiCardTexTool-*.zip
+            KoiCardTexTool-*.zip.sha256
+          body: |
+            Download `KoiCardTexTool-${{ env.VERSION }}.zip` below.
+            解压即用（自包含版不用装 .NET）；`-lite.exe` 需要 .NET 8 桌面运行时。
