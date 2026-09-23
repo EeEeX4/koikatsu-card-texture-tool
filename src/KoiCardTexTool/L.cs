@@ -1371,6 +1371,62 @@ namespace KoiCardTexTool
             Add("性能", "Performance", "軽量");
             Add("性能（激进）", "Performance (aggressive)", "軽量（強）");
             Add("（colorArea=1", "（colorArea=1", "（colorArea=1");
+            // ---- v1.1.10：共用（表格里 "…共用" 的尾巴）----
+            Add("共用", "shared", "共用");
+            Add("共用：", "shared: ", "共用：");
+            Add("（按共用规则）", " (shared rule)", "（共用ルール）");
+            // ---- v1.1.10：材质名（材质栏显示的就是卡里的这些名字）----
+            Add("上衣", "Top", "上衣");
+            Add("内裙", "Inner skirt", "内スカート");
+            Add("外裙", "Outer skirt", "外スカート");
+            Add("内裤", "Panties", "下着");
+            Add("胸罩", "Bra", "ブラ");
+            Add("吊带", "Strap", "ストラップ");
+            Add("手套", "Gloves", "手袋");
+            Add("手环", "Bracelet", "ブレスレット");
+            Add("袜子", "Socks", "靴下");
+            Add("过膝袜", "Thighhighs", "ニーソックス");
+            Add("丝袜", "Stockings", "ストッキング");
+            Add("鞋", "Shoes", "靴");
+            Add("高跟鞋", "High heels", "ハイヒール");
+            Add("鞋带", "Shoelaces", "靴ひも");
+            Add("皮带", "Belt", "ベルト");
+            Add("腿环", "Leg ring", "レッグリング");
+            Add("袖子", "Sleeve", "袖");
+            Add("袖带", "Armband", "アームバンド");
+            Add("裙边", "Hem", "裾");
+            Add("蕾丝边", "Lace trim", "レース縁");
+            Add("缎带", "Ribbon", "リボン");
+            Add("蝴蝶结", "Bow", "リボン結び");
+            Add("翅膀", "Wings", "翼");
+            Add("头纱外", "Veil (outer)", "ベール（外）");
+            Add("头纱里", "Veil (inner)", "ベール（内）");
+            Add("项链", "Necklace", "ネックレス");
+            Add("珠宝", "Jewel", "ジュエル");
+            Add("宝石", "Gem", "宝石");
+            Add("宝石1", "Gem 1", "宝石1");
+            Add("宝石2", "Gem 2", "宝石2");
+            Add("珍珠", "Pearl", "パール");
+            Add("首饰", "Jewelry", "宝飾");
+            Add("饰品", "Accessory", "アクセサリ");
+            Add("金属", "Metal", "金属");
+            Add("金装飾", "Gold ornament", "金装飾");
+            Add("镜片", "Lens", "レンズ");
+            Add("布", "Cloth", "布");
+            Add("布半透明", "Cloth (transparent)", "布（半透明）");
+            Add("半透明2", "Transparent 2", "半透明2");
+            Add("衣服", "Clothes", "服");
+            Add("衣服alpha", "Clothes alpha", "服alpha");
+            Add("加固", "Reinforcement", "補強");
+            Add("宝藏", "Treasure", "トレジャー");
+            Add("旗袍", "Qipao", "チャイナドレス");
+            Add("玫瑰花", "Rose", "バラ");
+            Add("服1", "Outfit 1", "服1");
+            Add("服2", "Outfit 2", "服2");
+            Add("服3", "Outfit 3", "服3");
+            Add("服4", "Outfit 4", "服4");
+            Add("服5", "Outfit 5", "服5");
+            Add("服6", "Outfit 6", "服6");
             // ---- v1.1.5：压缩选项的气泡说明（简短版）----
             Add("降分辨率时用面积平均，细节更清楚。不勾 = 用普通缩放（更快）。",
                 "Area averaging when downscaling — keeps detail clearer. Unchecked: plain resize (faster).",
