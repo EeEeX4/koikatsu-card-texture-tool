@@ -15,6 +15,16 @@
   [中文](#中文) · [English](#english) · [日本語](#日本語) · [한국어](#한국어)
 </div>
 
+> [!CAUTION]
+> ## ⚠️ 使用前请备份原卡！
+> 本工具会**重写卡片里的贴图**。请先复制一份原始卡片再压缩 —— 万一效果不满意，原卡还在，随时可以重来。
+>
+> **Back up your cards before using this tool.** It rewrites the textures inside them — always keep the originals.
+>
+> **ご使用前にカードを必ずバックアップしてください。** 本ツールはカード内のテクスチャを書き換えます。
+>
+> **사용 전에 카드를 반드시 백업하세요.** 이 도구는 카드 안의 텍스처를 다시 씁니다.
+
 ---
 
 ## 中文
@@ -57,6 +67,9 @@
 2. 选输出目录（默认是 `原目录\compressed`）
 3. 按需调整贴图类型的「处理方式」和「最大边」；不确定就用预设
 4. 点 **▶ 开始压缩**
+
+> [!TIP]
+> **关于「独占贴图保护」**：大部分情况下**可以关掉**。只有在**单张贴图在单件服装上的面积占比过大**时（例如连体紧身衣）才有必要打开 —— 那种情况下这张图是那个部位唯一的高清来源，缩了会明显发糊。其它时候可以考虑关掉（体积更小、速度更快）。
 
 ### 用法（命令行）
 
@@ -121,6 +134,9 @@ Grab a build from [Releases](../../releases): the **self-contained** exe (≈66 
 
 GUI: drop a card (`.png`) or a folder into the window, pick an output folder, adjust the per-type settings (or just pick a preset) and press **Start**.
 
+> [!TIP]
+> **About "Protect exclusive"**: you can turn it **off in most cases**. It is only needed when a **single texture covers a large share of one outfit** (a bodysuit, for example) — there that texture is the part's only hi-res source and downscaling it shows. Otherwise consider leaving it off (smaller cards, faster runs).
+
 CLI:
 
 ```bat
@@ -177,6 +193,9 @@ GUI：カード（`.png`）またはフォルダをウィンドウにドロッ�
 
 CLI は `scan` / `parts` / `compress` / `batch`、詳細は `help`。
 
+> [!TIP]
+> **「専有テクスチャを保護」について**：多くの場合**オフにできます**。**1 枚のテクスチャが 1 着の中で占める面積が大きい**とき（例：ボディスーツ）だけ必要です —— その場合はその部位唯一の高解像度元なので、縮めると目立ちます。それ以外はオフを検討してください（容量が小さく、速くなります）。
+
 ### ビルド
 
 ```powershell
@@ -222,6 +241,9 @@ pwsh -File tools/selftest.ps1 -Card "衣装カード.png"
 GUI: 카드(`.png`)나 폴더를 창에 드롭 → 출력 폴더 선택 → 필요하면 종류별 설정 조정(프리셋 가능) → **시작**.
 
 CLI: `scan` / `parts` / `compress` / `batch`, 자세한 내용은 `help`.
+
+> [!TIP]
+> **「전용 텍스처 보호」에 대하여**：대부분의 경우 **꺼도 됩니다**. **한 장의 텍스처가 한 벌에서 차지하는 면적이 클 때**(예: 전신 타이즈)만 필요합니다 —— 그때는 그 부위의 유일한 고해상도 원본이라 줄이면 티가 납니다. 그 외에는 끄는 것을 고려하세요 (용량이 작아지고 빨라집니다).
 
 ### 빌드
 
