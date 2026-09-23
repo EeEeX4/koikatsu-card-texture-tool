@@ -10,7 +10,7 @@
     <AssemblyName>KoiCardTexTool</AssemblyName>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <RootNamespace>KoiCardTexTool</RootNamespace>
-    <Version>1.0</Version>
+    <Version>1.0.1</Version>
     <Product>Koikatsu Coordinate/Chara Texture Optimization Tool</Product>
     <AssemblyTitle>Koikatsu Coordinate/Chara Texture Optimization Tool</AssemblyTitle>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
