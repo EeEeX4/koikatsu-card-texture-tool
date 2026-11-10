@@ -1,4 +1,4 @@
-# 使用手册（1.0）
+# 使用手册（1.2）
 
 Koikatsu Coordinate/Chara Texture Optimization Tool —— 把卡片里的贴图重新压缩，让卡片变小。
 
@@ -112,6 +112,25 @@ KoiCardTexTool.exe preset   card.png a.json parts=top:auto:512 tex=26:png:256
 `max_size` = 最长边上限，`0` = 不缩放
 
 ---
+
+### 导出 / 删除贴图（v1.2）
+
+**导出**：第 2 / 3 页的贴图明细支持 Ctrl/Shift 多选，也有「全选」按钮；右键菜单或「导出选中… / 导出全部…」把贴图写到磁盘（只读，不改卡）。第 1 页的「导出贴图…」支持单卡或整个文件夹（按「包含子文件夹」递归）批量导出。默认保持原格式，并在输出目录生成 `manifest.csv`（TexID、类型、用途、尺寸、字节、槽位、材质、属性、文件）。
+
+```bat
+KoiCardTexTool.exe extract card.png D:\tex                  :: 导出全部贴图 + manifest.csv
+KoiCardTexTool.exe extract D:\cards D:\tex purpose=clothes  :: 只导衣服贴图
+KoiCardTexTool.exe extract card.png D:\tex format=png       :: 统一转 PNG（HDR 做色调映射）
+```
+
+**删除**：明细表选中一行或多行 → 右键「删除选中贴图…」或工具栏「删除选中…」。确认框会列出 TexID、尺寸、共用部位和卡片体积变化；默认另存为 `原名_texremoved.png`，原卡不动。删除会同时清理 `MaterialTexturePropertyList` 里的引用，写完自动复检（无残留、无悬空、PNG 结构完整）。
+
+```bat
+KoiCardTexTool.exe delete in.png out.png texids=6,7       :: 删除指定 TexID
+KoiCardTexTool.exe delete in.png out.png texids=orphans   :: 删除所有未引用贴图
+```
+
+> 删除后对应材质属性会回落到 shader 默认值；共用贴图会影响所有引用它的部位。建议先用测试卡进游戏验证。
 
 ## 6. 常见问题
 

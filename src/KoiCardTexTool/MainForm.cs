@@ -2893,6 +2893,9 @@ namespace KoiCardTexTool
             MakeMainButton(btnRun, "▶  开始压缩", Font);
             btnRun.Click += delegate { DoRun(); };
             btnCancel.Click += delegate { cancelFlag = true; lblStatus.Text = "正在取消…"; };
+            var bExportTex = new Button { Text = "导出贴图…", AutoSize = true };
+            L.Tip(bExportTex, "把输入卡片/文件夹里的贴图导出到磁盘（只读，不改卡）。");
+            bExportTex.Click += delegate { ExportFolderTextures(bExportTex); };
             var bOpen = new Button { Text = "打开输出目录", AutoSize = true };
             bOpen.Click += delegate
             {
@@ -2911,7 +2914,7 @@ namespace KoiCardTexTool
             var bQuit = new Button { Text = "退出", AutoSize = true };
             bQuit.Click += delegate { Close(); };
             pAct.Controls.Add(btnRun); pAct.Controls.Add(btnCancel);
-            pAct.Controls.Add(bOpen); pAct.Controls.Add(bPlan); pAct.Controls.Add(bQuit);
+            pAct.Controls.Add(bExportTex); pAct.Controls.Add(bOpen); pAct.Controls.Add(bPlan); pAct.Controls.Add(bQuit);
             btnLog1.Click += delegate { LogBtnClicked(1); };
             pActRow.Controls.Add(pAct, 0, 0);
             pActRow.Controls.Add(btnLog1, 1, 0);                  // 日志开关单独摆在最右边
@@ -3481,7 +3484,7 @@ namespace KoiCardTexTool
             gridTex.AllowUserToResizeRows = false;                     // v2.24：行高不许拖（容易误触）
             gridTex.ScrollBars = ScrollBars.Both;
             gridTex.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            gridTex.MultiSelect = false;
+            gridTex.MultiSelect = true;                                  // v1.1：删除/导出支持 Ctrl/Shift 多选
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tid", HeaderText = "TexID", ReadOnly = true, FillWeight = 6, MinimumWidth = 48 });
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tcls", HeaderText = "类型", ReadOnly = true, FillWeight = 8, MinimumWidth = 54 });
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tdim", HeaderText = "尺寸", ReadOnly = true, FillWeight = 6, MinimumWidth = 56 });
@@ -3489,6 +3492,8 @@ namespace KoiCardTexTool
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tbytes", HeaderText = "大小", ReadOnly = true, FillWeight = 8, MinimumWidth = 62 });
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tfmt", HeaderText = "原格式", ReadOnly = true, FillWeight = 6, MinimumWidth = 54 });
             gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tshare", HeaderText = "共用情况", ReadOnly = true, FillWeight = 20, MinimumWidth = 70 });
+            // v1.1：用途（衣服/饰品/身体/未引用）。只读文本，不参与数值排序。
+            gridTex.Columns.Add(new DataGridViewTextBoxColumn { Name = "tpurpose", HeaderText = "用途", ReadOnly = true, FillWeight = 14, MinimumWidth = 86 });
             var cbTF = new DataGridViewComboBoxColumn { Name = "trule", HeaderText = "处理方式", FillWeight = 12, MinimumWidth = 74, FlatStyle = FlatStyle.Flat };
             cbTF.Items.AddRange(TexFmtItems);
             var cbTS = new DataGridViewComboBoxColumn { Name = "tsize", HeaderText = "最大边", FillWeight = 10, MinimumWidth = 62, FlatStyle = FlatStyle.Flat };
@@ -3545,6 +3550,26 @@ namespace KoiCardTexTool
             };
             texBox.Controls.Add(prevP2, 0, 2);
             gbTex.Controls.Add(texBox);
+            // v1.1：导出工具栏（贴在明细表上方）+ 右键菜单
+            var barExp2 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 2, 0, 2) };
+            var btnExpSel2 = new Button { Text = "导出选中…", AutoSize = true };
+            L.Tip(btnExpSel2, "把当前选中的贴图导出到磁盘（只读，不改卡片）。");
+            btnExpSel2.Click += delegate { ExportTexFromGrid(gridTex, txtP2Card.Text.Trim(), true, Log2); };
+            var btnExpAll2 = new Button { Text = "导出全部…", AutoSize = true };
+            L.Tip(btnExpAll2, "把这张卡里的全部贴图导出到磁盘（只读，不改卡片）。");
+            btnExpAll2.Click += delegate { ExportTexFromGrid(gridTex, txtP2Card.Text.Trim(), false, Log2); };
+            var btnSelAll2 = new Button { Text = "全选", AutoSize = true };
+            L.Tip(btnSelAll2, "选中明细里的全部贴图（之后可导出或删除）。");
+            btnSelAll2.Click += delegate { if (gridTex.Rows.Count > 0) gridTex.SelectAll(); };
+            barExp2.Controls.Add(btnSelAll2);
+            barExp2.Controls.Add(btnExpSel2);
+            barExp2.Controls.Add(btnExpAll2);
+            var btnDel2 = new Button { Text = "删除选中…", AutoSize = true };
+            L.Tip(btnDel2, "从卡片里物理删除选中的贴图（同时清理绑定），另存为新卡；原卡不会自动覆盖。");
+            btnDel2.Click += delegate { DeleteTexFromGrid(gridTex, txtP2Card.Text.Trim(), Log2); };
+            barExp2.Controls.Add(btnDel2);
+            gbTex.Controls.Add(barExp2);
+            gridTex.ContextMenuStrip = BuildTexMenu(gridTex, delegate { return txtP2Card.Text.Trim(); }, Log2);
             spPrev2 = MakeRowSplitter(texBox, 1, 0, 2, 140, 70);              // 明细 | 预览：上下拖
             gridTex.SelectionChanged += delegate
             {
@@ -4408,6 +4433,329 @@ namespace KoiCardTexTool
             logP2.ScrollToCaret();
         }
 
+        /// <summary>从贴图明细表导出文件（第 2/3 页共用）。selectedOnly=true 时只导选中行。
+        /// 只读操作：不改卡片；输出目录默认是卡片旁边的 _textures。</summary>
+        void ExportTexFromGrid(DataGridView grid, string cardPath, bool selectedOnly, Action<string> log)
+        {
+            if (grid == null || grid.Rows.Count == 0)
+            {
+                MessageBox.Show(this, L.Tr("请先读取一张卡，并在贴图明细里选中要导出的行。"),
+                    L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (string.IsNullOrEmpty(cardPath) || !File.Exists(cardPath))
+            {
+                MessageBox.Show(this, L.Tr("卡片路径无效，无法导出。"),
+                    L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            HashSet<string> ids = null;
+            if (selectedOnly)
+            {
+                ids = new HashSet<string>(StringComparer.Ordinal);
+                foreach (DataGridViewRow row in grid.SelectedRows)
+                {
+                    string id = row.Tag as string;
+                    if (!string.IsNullOrEmpty(id)) ids.Add(id);
+                }
+                if (ids.Count == 0)
+                {
+                    MessageBox.Show(this, L.Tr("请先选中至少一行贴图。"),
+                        L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+            }
+            using (var dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = L.Tr("选择贴图导出目录");
+                dlg.ShowNewFolderButton = true;
+                // FolderBrowserDialog 不接受不存在的 SelectedPath（会弹「路径不存在」）。
+                // 默认的 <卡片目录>\_textures 通常还没建，所以先建出来；建不了就退回卡片目录。
+                string def = TexTool.DefaultExportOut(cardPath);
+                try
+                {
+                    Directory.CreateDirectory(def);
+                    dlg.SelectedPath = def;
+                }
+                catch
+                {
+                    try { dlg.SelectedPath = Path.GetDirectoryName(cardPath) ?? "."; } catch { }
+                }
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                var opt = new TexTool.ExportOptions { OutDir = dlg.SelectedPath, OnlyIds = ids, Overwrite = true };
+                TexTool.ExportResult res;
+                Cursor = Cursors.WaitCursor;
+                try
+                {
+                    res = TexTool.ExportCards(new[] { cardPath }, opt, null, log);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, L.F("导出失败：{0}", ex.Message),
+                        L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                finally { Cursor = Cursors.Default; }
+                string msg = L.F("导出完成：{0} 张 / 跳过 {1} / 失败 {2}\r\n写出 {3}\r\n目录：{4}",
+                    res.Files, res.Skipped, res.Failed, TexTool.Human(res.Bytes), dlg.SelectedPath);
+                if (res.Skipped > 0)
+                    msg += "\r\n\r\n" + L.F("跳过 {0} 张：目标目录已有同名文件。", res.Skipped);
+                if (res.Errors.Count > 0)
+                    msg += "\r\n\r\n" + string.Join("\r\n",
+                        res.Errors.GetRange(0, Math.Min(6, res.Errors.Count)).ToArray());
+                MessageBox.Show(this, msg, L.Tr("导出贴图"), MessageBoxButtons.OK,
+                    res.Failed > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            }
+        }
+
+        /// <summary>第 1 页的「导出贴图…」：输入可以是单卡或文件夹（按「包含子文件夹」递归）。
+        /// 只读导出；后台执行，避免大批量卡把界面卡死。</summary>
+        void ExportFolderTextures(Button owner)
+        {
+            string input = txtIn.Text.Trim();
+            if (input.Length == 0 || (!File.Exists(input) && !Directory.Exists(input)))
+            {
+                MessageBox.Show(this, L.Tr("请先选择一张卡或一个文件夹。"),
+                    L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string def = TexTool.DefaultExportOut(input);
+            using (var dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = L.Tr("选择贴图导出目录");
+                dlg.ShowNewFolderButton = true;
+                try
+                {
+                    Directory.CreateDirectory(def);
+                    dlg.SelectedPath = def;
+                }
+                catch
+                {
+                    try
+                    {
+                        dlg.SelectedPath = Directory.Exists(input) ? input
+                            : (Path.GetDirectoryName(input) ?? ".");
+                    }
+                    catch { }
+                }
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                var cards = new List<string>();
+                if (Directory.Exists(input))
+                {
+                    foreach (var cf in TexTool.Enumerate(input, dlg.SelectedPath, chkRecurse.Checked))
+                        cards.Add(cf.Src);
+                }
+                else cards.Add(input);
+                if (cards.Count == 0)
+                {
+                    MessageBox.Show(this, L.Tr("没有找到卡片。"),
+                        L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var opt = new TexTool.ExportOptions { OutDir = dlg.SelectedPath, Overwrite = chkOverwrite.Checked };
+                string outDir = dlg.SelectedPath;
+                if (owner != null) owner.Enabled = false;
+                Cursor = Cursors.WaitCursor;
+                lblStatus.Text = L.F("正在导出贴图：{0} 张卡…", cards.Count);
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    TexTool.ExportResult res = null;
+                    Exception err = null;
+                    try { res = TexTool.ExportCards(cards, opt, null, Log1); }
+                    catch (Exception ex) { err = ex; }
+                    try
+                    {
+                        BeginInvoke((Action)delegate
+                        {
+                            if (owner != null) owner.Enabled = true;
+                            Cursor = Cursors.Default;
+                            if (err != null)
+                            {
+                                lblStatus.Text = "导出失败";
+                                MessageBox.Show(this, L.F("导出失败：{0}", err.Message),
+                                    L.Tr("导出贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+                            lblStatus.Text = L.F("导出完成：{0} 张 / 跳过 {1} / 失败 {2}",
+                                res.Files, res.Skipped, res.Failed);
+                            string msg = L.F("导出完成：{0} 张 / 跳过 {1} / 失败 {2}\r\n写出 {3}\r\n目录：{4}",
+                                res.Files, res.Skipped, res.Failed, TexTool.Human(res.Bytes), outDir);
+                            if (res.Skipped > 0)
+                                msg += "\r\n\r\n" + L.F("跳过 {0} 张：目标目录已有同名文件（勾选「覆盖同名」可重写）。", res.Skipped);
+                            if (res.Errors.Count > 0)
+                                msg += "\r\n\r\n" + string.Join("\r\n",
+                                    res.Errors.GetRange(0, Math.Min(6, res.Errors.Count)).ToArray());
+                            MessageBox.Show(this, msg, L.Tr("导出贴图"), MessageBoxButtons.OK,
+                                res.Failed > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+                        });
+                    }
+                    catch { }
+                });
+            }
+        }
+
+        /// <summary>贴图明细表的右键菜单（第 2/3 页共用）。</summary>
+        ContextMenuStrip BuildTexMenu(DataGridView grid, Func<string> cardPath, Action<string> log)
+        {
+            var m = new ContextMenuStrip();
+            var miSel = new ToolStripMenuItem(L.Tr("导出选中贴图…"));
+            miSel.Click += delegate { ExportTexFromGrid(grid, cardPath(), true, log); };
+            var miAll = new ToolStripMenuItem(L.Tr("导出本卡全部贴图…"));
+            miAll.Click += delegate { ExportTexFromGrid(grid, cardPath(), false, log); };
+            m.Items.Add(miSel);
+            m.Items.Add(miAll);
+            m.Items.Add(new ToolStripSeparator());
+            var miDel = new ToolStripMenuItem(L.Tr("删除选中贴图…"));
+            miDel.Click += delegate { DeleteTexFromGrid(grid, cardPath(), log); };
+            m.Items.Add(miDel);
+            // 右键菜单不在控件树里，L.Apply 遍历不到；每次打开时按当前语言重译一遍。
+            m.Opening += delegate
+            {
+                foreach (ToolStripItem it in m.Items)
+                {
+                    var mi = it as ToolStripMenuItem;
+                    if (mi != null) mi.Text = L.Retranslate(mi.Text);
+                }
+            };
+            return m;
+        }
+
+        /// <summary>删除贴图（第 2/3 页共用）：选中行 → 内存里删除并自检 → 确认影响 → 另存新卡
+        /// → 自动切换到新卡重新扫描。原卡在用户选择覆盖之前不会被修改。</summary>
+        void DeleteTexFromGrid(DataGridView grid, string cardPath, Action<string> log)
+        {
+            if (grid == null || grid.Rows.Count == 0)
+            {
+                MessageBox.Show(this, L.Tr("请先读取一张卡，并在贴图明细里选中要删除的行。"),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (string.IsNullOrEmpty(cardPath) || !File.Exists(cardPath))
+            {
+                MessageBox.Show(this, L.Tr("卡片路径无效，无法删除。"),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            var ids = new List<string>();
+            var desc = new StringBuilder();
+            foreach (DataGridViewRow row in grid.SelectedRows)
+            {
+                string id = row.Tag as string;
+                if (string.IsNullOrEmpty(id)) continue;
+                ids.Add(id);
+                desc.AppendLine(string.Format("TexID {0}  {1}  {2}  {3}  {4}",
+                    id, CellText(row, "tcls"), CellText(row, "tdim"),
+                    CellText(row, "tbytes"), CellText(row, "tpurpose")));
+            }
+            if (ids.Count == 0)
+            {
+                MessageBox.Show(this, L.Tr("请先选中至少一行贴图（可按住 Ctrl/Shift 多选）。"),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            byte[] card = null;
+            if (grid == gridTex && ps != null && ps.Raw != null) card = ps.Raw;
+            else if (grid == gridGT && ps3 != null && ps3.Raw != null) card = ps3.Raw;
+            if (card == null)
+            {
+                try { card = File.ReadAllBytes(cardPath); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, L.F("读取卡片失败：{0}", ex.Message),
+                        L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+            }
+
+            TexTool.RemoveResult res;
+            Cursor = Cursors.WaitCursor;
+            try { res = TexTool.RemoveTextures(card, ids); }
+            catch (Exception ex)
+            {
+                Cursor = Cursors.Default;
+                MessageBox.Show(this, L.F("删除失败：{0}", ex.Message),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            finally { Cursor = Cursors.Default; }
+            if (!res.Ok)
+            {
+                MessageBox.Show(this, L.F("删除失败：{0}", res.Error),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            if (res.Removed == 0 && res.RemovedRefs == 0)
+            {
+                MessageBox.Show(this, L.F("卡里没有找到这些 TexID：{0}", string.Join(",", res.Missing.ToArray())),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string msg = L.F("将删除 {0} 张贴图：\r\n{1}\r\n卡片 {2} → {3}\r\n\r\n"
+                + "删除后这些材质属性会回落到 shader 默认值；共用贴图会影响所有引用它的部位。\r\n是否继续？",
+                ids.Count, desc.ToString(), TexTool.Human(res.BytesBefore), TexTool.Human(res.BytesAfter));
+            if (MessageBox.Show(this, msg, L.Tr("删除贴图"), MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
+            string initDir = Path.GetDirectoryName(cardPath) ?? ".";
+            string stem = Path.GetFileNameWithoutExtension(cardPath);
+            using (var dlg = new SaveFileDialog())
+            {
+                dlg.Title = L.Tr("另存为新卡");
+                dlg.Filter = L.Tr("Koikatsu 卡片|*.png");
+                dlg.InitialDirectory = initDir;
+                dlg.FileName = stem + "_texremoved.png";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                string outPath = dlg.FileName;
+                if (string.Equals(Path.GetFullPath(outPath), Path.GetFullPath(cardPath), StringComparison.OrdinalIgnoreCase))
+                {
+                    if (MessageBox.Show(this, L.Tr("这会覆盖原卡。建议先备份。确定继续？"),
+                            L.Tr("覆盖原卡"), MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                }
+                string tmp = outPath + ".tmp-" + Guid.NewGuid().ToString("N");
+                try
+                {
+                    File.WriteAllBytes(tmp, res.Bytes);
+                    File.Move(tmp, outPath, true);
+                }
+                catch (Exception ex)
+                {
+                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                    MessageBox.Show(this, L.F("写出失败：{0}", ex.Message),
+                        L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 切到新卡并重读（G3Load/LoadParts 会清空日志，所以删除记录放在它们之后写）
+                if (grid == gridTex)
+                {
+                    txtP2Card.Text = outPath;
+                    LoadParts();
+                }
+                else
+                {
+                    g3Cards.Clear();
+                    g3Cards.Add(outPath);
+                    txtG3Card.Text = outPath;
+                    G3Load();
+                }
+                if (log != null)
+                {
+                    log(L.F("删除贴图：{0} 张（绑定引用 {1} 条）→ {2}",
+                        res.Removed, res.RemovedRefs, outPath));
+                    log(L.F("卡片 {0} → {1}", TexTool.Human(res.BytesBefore), TexTool.Human(res.BytesAfter)));
+                    foreach (var w in res.Warnings) log("警告：" + w);
+                }
+                MessageBox.Show(this, L.F("已保存：{0}\r\n删除 {1} 张 / 绑定引用 {2} 条",
+                        outPath, res.Removed, res.RemovedRefs),
+                    L.Tr("删除贴图"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
         /// <summary>读卡 + 解析部位，填表。</summary>
         /// <summary>读部位：**放到后台线程**（v2.25）。
         /// 以前是同步调用，人物卡 270MB 那几百毫秒到几秒里窗口完全冻住、连"正在读取…（大卡要几秒；界面不会卡住）"
@@ -4571,6 +4919,7 @@ namespace KoiCardTexTool
                 row.Cells["tbytes"].Value = TexTool.Human(tx.Bytes);
                 row.Cells["tfmt"].Value = tx.Fmt;
                 row.Cells["tshare"].Value = tx.Shared ? ("与 " + tx.SlotNames + " 共用") : "独享";
+                row.Cells["tpurpose"].Value = TexTool.UseLabelUi(tx.SlotKeys);
                 row.Cells["trule"].Value = hasOv ? KeyToFmtItem(ov.Format) : "跟随部位";
                 row.Cells["tsize"].Value = hasOv ? (ov.Size > 0 ? ov.Size.ToString() : "不缩放") : "跟随部位";
                 row.Cells["tsh"].Value = hasOv ? SharpenValToItem(ov.SharpenPct) : "跟随部位";

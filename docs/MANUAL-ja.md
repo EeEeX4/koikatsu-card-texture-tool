@@ -1,4 +1,4 @@
-# 取扱説明書（1.0）
+# 取扱説明書（1.2）
 
 Koikatsu Coordinate/Chara Texture Optimization Tool —— カード内のテクスチャを再圧縮して、カードのファイルサイズを小さくするツールです。
 
@@ -109,6 +109,25 @@ KoiCardTexTool.exe preset   card.png a.json parts=top:auto:512 tex=26:png:256
 `max_size` = 長辺の上限、`0` = 縮小しない
 
 ---
+
+### テクスチャの書き出し / 削除（v1.2）
+
+**書き出し** — 2 / 3 ページ目のテクスチャ一覧は Ctrl/Shift で複数選択でき、「すべて選択」ボタンもあります。右クリックメニューまたは「選択をエクスポート… / すべてエクスポート…」でディスクへ書き出します（読み取りのみ、カードは変更しません）。1 ページ目の「テクスチャをエクスポート…」は 1 枚のカードまたはフォルダー全体（「サブフォルダを含む」で再帰）に対応します。元の形式のまま保存し、`manifest.csv`（TexID・種別・用途・サイズ・バイト数・部位・マテリアル・プロパティ・ファイル）を生成します。
+
+```bat
+KoiCardTexTool.exe extract card.png D:\tex                  :: 全テクスチャ + manifest.csv
+KoiCardTexTool.exe extract D:\cards D:\tex purpose=clothes  :: 衣装のみ
+KoiCardTexTool.exe extract card.png D:\tex format=png       :: PNG に統一（HDR はトーンマップ）
+```
+
+**削除** — 行を 1 つ以上選び、右クリック「選択テクスチャを削除…」またはツールバー「選択を削除…」。確認ダイアログに TexID・サイズ・共有部位・カード容量の変化が表示されます。既定では `<名前>_texremoved.png` として保存され、元のカードは変更しません。`MaterialTexturePropertyList` の参照も整理し、書き出し前に自動検証します。
+
+```bat
+KoiCardTexTool.exe delete in.png out.png texids=6,7       :: 指定 TexID を削除
+KoiCardTexTool.exe delete in.png out.png texids=orphans   :: 未参照テクスチャをすべて削除
+```
+
+> 削除したマテリアル属性はシェーダーの既定値に戻ります。共有テクスチャは参照するすべての部位に影響します。まずテストカードでゲーム内確認してください。
 
 ## 6. よくある質問
 

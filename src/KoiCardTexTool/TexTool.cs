@@ -508,6 +508,90 @@ namespace KoiCardTexTool
         // 给「按部位压缩」分页用：一张卡里每个部位有哪些贴图、每张贴图多大、
         // 以及每张贴图还被哪些别的部位共用（共用的只能有一种处理方式）。
 
+        /// <summary>一张贴图被哪些类别的槽位使用。可以同时成立：
+        /// 人物卡里同一张图常被多套换装共用，甚至既挂在服装槽又挂在饰品槽。</summary>
+        [Flags]
+        public enum TexUse { None = 0, Clothes = 1, Accessory = 2, Body = 4 }
+
+        /// <summary>槽位键 → 用途标记。人物卡的键要先剥掉组号（Chara.KeySlot），
+        /// 否则 100000+ 的键会被误判成"身体"。</summary>
+        public static TexUse UseOf(List<int> slotKeys)
+        {
+            TexUse u = TexUse.None;
+            if (slotKeys == null) return u;
+            foreach (var k in slotKeys)
+            {
+                int raw = Chara.IsCharaKey(k) ? Chara.KeySlot(k) : k;
+                int ot = Card.SlotObjType(raw);
+                if (ot == Card.ObjClothes) u |= TexUse.Clothes;
+                else if (ot == Card.ObjAccessory) u |= TexUse.Accessory;
+                else u |= TexUse.Body;
+            }
+            return u;
+        }
+
+        /// <summary>机器可读的用途 token（manifest.csv / CLI 过滤用）：
+        /// clothes / accessory / body / 组合（clothes+accessory）/ orphan。</summary>
+        public static string UseToken(List<int> slotKeys)
+        {
+            var u = UseOf(slotKeys);
+            if (u == TexUse.None) return "orphan";
+            var l = new List<string>();
+            if ((u & TexUse.Clothes) != 0) l.Add("clothes");
+            if ((u & TexUse.Accessory) != 0) l.Add("accessory");
+            if ((u & TexUse.Body) != 0) l.Add("body");
+            return string.Join("+", l.ToArray());
+        }
+
+        /// <summary>给人看的用途短文本（界面「用途」列）：
+        /// 衣服·top+bra / 饰品·acc3 / 身体 / 未引用。衣服槽用机器名（top/bot/…），
+        /// 这样跨语言界面也不需要翻译；槽位编号排序后再拼，顺序稳定。</summary>
+        public static string UseLabel(List<int> slotKeys)
+        {
+            return UseLabelCore(slotKeys, delegate (string s) { return s; });
+        }
+
+        /// <summary>界面用：与 <see cref="UseLabel"/> 相同，但类别词走当前语言。
+        /// manifest/CLI 仍用中文原版，保证清单与命令行输出稳定。</summary>
+        public static string UseLabelUi(List<int> slotKeys)
+        {
+            return UseLabelCore(slotKeys, L.T);
+        }
+
+        static string UseLabelCore(List<int> slotKeys, Func<string, string> tr)
+        {
+            if (slotKeys == null || slotKeys.Count == 0) return tr("未引用");
+            var clothes = new List<int>();
+            var acc = new List<int>();
+            bool body = false;
+            foreach (var k in slotKeys)
+            {
+                int raw = Chara.IsCharaKey(k) ? Chara.KeySlot(k) : k;
+                int ot = Card.SlotObjType(raw), sn = Card.SlotIndex(raw);
+                if (ot == Card.ObjClothes) { if (!clothes.Contains(sn)) clothes.Add(sn); }
+                else if (ot == Card.ObjAccessory) { if (!acc.Contains(sn)) acc.Add(sn); }
+                else body = true;
+            }
+            clothes.Sort();
+            acc.Sort();
+            var parts = new List<string>();
+            if (clothes.Count > 0)
+            {
+                var names = new List<string>();
+                foreach (var sn in clothes)
+                    names.Add(sn >= 0 && sn < Card.ClothesSlotTokens.Length ? Card.ClothesSlotTokens[sn] : ("slot" + sn));
+                parts.Add(tr("衣服") + "·" + string.Join("+", names.ToArray()));
+            }
+            if (acc.Count > 0)
+            {
+                var names = new List<string>();
+                foreach (var sn in acc) names.Add("acc" + sn);
+                parts.Add(tr("饰品") + "·" + string.Join("+", names.ToArray()));
+            }
+            if (body) parts.Add(tr("身体"));
+            return string.Join(" / ", parts.ToArray());
+        }
+
         public sealed class PartTex
         {
             public object Id;
@@ -517,6 +601,10 @@ namespace KoiCardTexTool
             public List<int> SlotKeys = new List<int>();
             public string SlotNames = "";
             public List<string> Sigs = new List<string>();     // 绑定签名（预设匹配/导出用）
+            /// <summary>这张图被哪类槽位引用（衣服 / 饰品 / 身体，可多选；未引用 = None）。</summary>
+            public TexUse Use;
+            /// <summary>用途的显示文本（见 <see cref="UseLabel"/>），扫描时算好，界面直接绑。</summary>
+            public string UseText = "";
             public bool Shared { get { return SlotKeys.Count > 1; } }
         }
 
@@ -697,6 +785,8 @@ namespace KoiCardTexTool
                     Fmt = FmtName(Sniff(raw)), Dim = DimOf(raw), Bytes = v.Len
                 };
                 if (texSlots.ContainsKey(tid)) t.SlotKeys = texSlots[tid];
+                t.Use = UseOf(t.SlotKeys);
+                t.UseText = UseLabel(t.SlotKeys);
                 List<string> sg;
                 if (sigs.TryGetValue(tid, out sg)) t.Sigs = sg;
                 var names = new List<string>();
@@ -789,6 +879,615 @@ namespace KoiCardTexTool
             sw.Stop();
             return L.F("总 {0}ms（其中整文件键扫描 {1} 次 / {2}ms）",
                 sw.ElapsedMilliseconds, Card.KeyScanCount - c0, Card.KeyScanMs - m0);
+        }
+
+        // ---------------------------------------------------------------- 导出贴图（v1.1）
+        // 把卡片里的贴图按原格式（或统一 PNG）写到磁盘，并生成 manifest.csv。
+        // 只读操作：不改卡片、不改任何源文件。批量入口与 GUI 共用这一套，
+        // 保证命令行与界面导出的文件名、清单、统计完全一致。
+
+        /// <summary>导出选项。默认值 = 保持原格式 / 全部用途 / 按卡分目录 / 写清单。</summary>
+        public sealed class ExportOptions
+        {
+            public string OutDir = "";
+            /// <summary>orig = 原字节原扩展名；png = 统一转 PNG（HDR 做色调映射，EXR 不支持）。</summary>
+            public string Format = "orig";
+            /// <summary>all | clothes | accessory | body | referenced | orphan</summary>
+            public string Purpose = "all";
+            public bool Overwrite = false;
+            /// <summary>true = 每张卡一个子目录（默认）；false = 全部平铺到输出目录。</summary>
+            public bool PerCardFolder = true;
+            public bool WriteManifest = true;
+            /// <summary>非空时只导出这些 TexID（界面「导出选中贴图」用）；null = 全部。</summary>
+            public HashSet<string> OnlyIds = null;
+        }
+
+        /// <summary>一次导出（可能多张卡）的统计。</summary>
+        public sealed class ExportResult
+        {
+            public int Cards, Files, Skipped, Failed;
+            public int Clothes, Accessory, Body, Orphan;
+            public long Bytes;                       // 实际写出的字节
+            public string ManifestPath = "";
+            public readonly List<string> Errors = new List<string>();
+            internal readonly List<string> Lines = new List<string>();
+            public bool Any { get { return Files > 0; } }
+        }
+
+        /// <summary>批量导出的默认输出目录：文件夹 → 文件夹\_textures；单卡 → 父目录\_textures。
+        /// 与压缩的 DefaultOut 一样，结果留在源目录旁边，但用独立名字，不和压缩输出混在一起。</summary>
+        public static string DefaultExportOut(string inputPath)
+        {
+            if (Directory.Exists(inputPath))
+            {
+                string name = Path.GetFileName(inputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (name.Length == 0) name = "cards";
+                return Path.Combine(Path.GetFullPath(inputPath), "_textures");
+            }
+            string parent = Path.GetDirectoryName(Path.GetFullPath(inputPath));
+            return Path.Combine(parent ?? ".", "_textures");
+        }
+
+        /// <summary>把卡号/文件名里不能出现在 Windows 文件名里的字符换掉。卡片名是用户起的，
+        /// 出现过 "White&Deep_Blue 2" 这种带 & 的（合法），也见过带冒号的（不合法）。</summary>
+        public static string SafeFileName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "card";
+            var bad = Path.GetInvalidFileNameChars();
+            var sb = new StringBuilder(s.Length);
+            foreach (char c in s) sb.Append(Array.IndexOf(bad, c) >= 0 ? '_' : c);
+            string r = sb.ToString().Trim().TrimEnd('.');
+            return r.Length == 0 ? "card" : r;
+        }
+
+        /// <summary>导出多张卡（路径由调用方给，CLI 用 Enumerate、GUI 用当前选中）。
+        /// 单张卡失败不打断整批；返回统计与错误清单。progress(本卡第几张, 本卡总数, 描述)。</summary>
+        public static ExportResult ExportCards(IList<string> cards, ExportOptions opt,
+                                               Action<int, int, string> progress, Action<string> log)
+        {
+            if (log == null) log = delegate (string s) { };
+            var res = new ExportResult();
+            if (opt == null) opt = new ExportOptions();
+            if (string.IsNullOrEmpty(opt.OutDir)) opt.OutDir = cards.Count == 1 ? DefaultExportOut(cards[0]) : ".";
+            Directory.CreateDirectory(opt.OutDir);
+            MarkOut(opt.OutDir);                       // 下次批量扫描不会把贴图目录当卡片
+            if (opt.WriteManifest) res.ManifestPath = Path.Combine(opt.OutDir, "manifest.csv");
+
+            foreach (var card in cards)
+            {
+                res.Cards++;
+                var ps = ScanParts(card);
+                if (!string.IsNullOrEmpty(ps.Err))
+                {
+                    res.Failed++;
+                    string e = Path.GetFileName(card) + "：" + ps.Err;
+                    res.Errors.Add(e);
+                    log("[跳过卡] " + e);
+                    continue;
+                }
+                string cardName = Path.GetFileNameWithoutExtension(card);
+                string dir = opt.PerCardFolder
+                    ? Path.Combine(opt.OutDir, SafeFileName(cardName))
+                    : opt.OutDir;
+                try { Directory.CreateDirectory(dir); }
+                catch (Exception ex)
+                {
+                    res.Failed++;
+                    string e = cardName + "：无法创建输出目录 —— " + ex.Message;
+                    res.Errors.Add(e);
+                    log("[失败] " + e);
+                    continue;
+                }
+
+                int n = 0, total = ps.All.Count;
+                int wrote = 0, skipped = 0, failed = 0;
+                foreach (var t in ps.All)
+                {
+                    n++;
+                    EnsureUse(t);
+                    if (opt.OnlyIds != null && !opt.OnlyIds.Contains(t.Id == null ? "" : t.Id.ToString())) continue;
+                    if (!PurposeMatches(t.Use, opt.Purpose)) continue;
+                    if (progress != null) progress(n, total, cardName + " / TexID " + t.Id);
+                    try
+                    {
+                        byte[] raw = ps.Raw != null ? TextureBytes(ps.Raw, t.Id) : TextureBytes(card, t.Id);
+                        if (raw == null)
+                        {
+                            failed++;
+                            res.Errors.Add(cardName + " / TexID " + t.Id + "：取不到贴图字节");
+                            continue;
+                        }
+                        byte[] outBytes = raw;
+                        TexFmt fmt = Sniff(raw);
+                        string ext = ExtFor(fmt);
+                        if (string.Equals(opt.Format, "png", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string err;
+                            outBytes = ToPng(raw, out err);
+                            if (outBytes == null)
+                            {
+                                failed++;
+                                res.Errors.Add(cardName + " / TexID " + t.Id + "：" + err);
+                                continue;
+                            }
+                            ext = ".png";
+                        }
+                        string file = string.Format("{0}_{1}_{2}{3}",
+                            t.Id, t.Cls.Length == 0 ? "other" : t.Cls, UseTag(t), ext);
+                        string dst = Path.Combine(dir, file);
+                        bool exists = File.Exists(dst);
+                        if (exists && !opt.Overwrite) { skipped++; }
+                        else
+                        {
+                            File.WriteAllBytes(dst, outBytes);
+                            wrote++;
+                            res.Files++;
+                            res.Bytes += outBytes.Length;
+                            if ((t.Use & TexUse.Clothes) != 0) res.Clothes++;
+                            if ((t.Use & TexUse.Accessory) != 0) res.Accessory++;
+                            if ((t.Use & TexUse.Body) != 0) res.Body++;
+                            if (t.Use == TexUse.None) res.Orphan++;
+                        }
+                        // 清单行即使跳过也写：这样「全部已存在」的重复导出不会把清单清空；
+                        // 合并逻辑会按 (card, TexID) 去重，旧行只在本次没扫到时保留。
+                        if (opt.WriteManifest)
+                        {
+                            int w, h;
+                            DimsOf(raw, out w, out h);
+                            res.Lines.Add(string.Join(",", new[] {
+                                Csv(cardName), Csv(t.Id == null ? "" : t.Id.ToString()), Csv(t.Cls),
+                                Csv(UseToken(t.SlotKeys)), Csv(t.Fmt), w.ToString(), h.ToString(),
+                                raw.Length.ToString(), outBytes.Length.ToString(),
+                                Csv(t.SlotNames), Csv(MaterialsFor(ps, t)), Csv(t.Props),
+                                Csv(Path.GetRelativePath(opt.OutDir, dst))
+                            }));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        res.Errors.Add(cardName + " / TexID " + t.Id + "：" + ex.Message);
+                    }
+                }
+                res.Skipped += skipped;
+                res.Failed += failed;
+                log(L.F("{0}：导出 {1} 张 / 跳过 {2} 张 / 失败 {3} 张（贴图共 {4} 张）",
+                    cardName, wrote, skipped, failed, total));
+            }
+
+                if (opt.WriteManifest && res.ManifestPath.Length > 0)
+                {
+                    try { WriteManifestMerged(res.ManifestPath, res.Lines); }
+                    catch (Exception ex)
+                    {
+                        res.Failed++;
+                        res.Errors.Add("manifest.csv 写入失败：" + ex.Message);
+                    }
+                }
+            return res;
+        }
+
+        /// <summary>用途过滤。未知值按 all 处理（CLI 会先校验参数，这里只是兜底）。</summary>
+        public static bool PurposeMatches(TexUse u, string purpose)
+        {
+            string p = (purpose ?? "all").Trim().ToLowerInvariant();
+            if (p.Length == 0 || p == "all") return true;
+            if (p == "clothes") return (u & TexUse.Clothes) != 0;
+            if (p == "accessory") return (u & TexUse.Accessory) != 0;
+            if (p == "body") return (u & TexUse.Body) != 0;
+            if (p == "referenced") return u != TexUse.None;
+            if (p == "orphan") return u == TexUse.None;
+            return true;
+        }
+
+        /// <summary>老的缓存/其它构造点可能没填 Use —— 用的时候现算一次，别显示空白。</summary>
+        static void EnsureUse(PartTex t)
+        {
+            if (string.IsNullOrEmpty(t.UseText)) { t.Use = UseOf(t.SlotKeys); t.UseText = UseLabel(t.SlotKeys); }
+        }
+
+        /// <summary>文件名里的用途/槽位片段：clothes_top+bra、accessory_acc3、clothes+accessory_top+acc1、body、orphan。</summary>
+        static string UseTag(PartTex t)
+        {
+            var u = t.Use;
+            var parts = new List<string>();
+            if ((u & TexUse.Clothes) != 0) parts.Add("clothes");
+            if ((u & TexUse.Accessory) != 0) parts.Add("accessory");
+            if ((u & TexUse.Body) != 0) parts.Add("body");
+            if (parts.Count == 0) parts.Add("orphan");
+            var slots = new List<string>();
+            foreach (var k in t.SlotKeys)
+            {
+                int raw = Chara.IsCharaKey(k) ? Chara.KeySlot(k) : k;
+                int ot = Card.SlotObjType(raw), sn = Card.SlotIndex(raw);
+                string s = ot == Card.ObjClothes
+                    ? (sn >= 0 && sn < Card.ClothesSlotTokens.Length ? Card.ClothesSlotTokens[sn] : "slot" + sn)
+                    : (ot == Card.ObjAccessory ? "acc" + sn : "body" + sn);
+                if (!slots.Contains(s)) slots.Add(s);
+            }
+            return string.Join("+", parts.ToArray()) + (slots.Count > 0 ? "_" + string.Join("+", slots.ToArray()) : "");
+        }
+
+        static string ExtFor(TexFmt f)
+        {
+            switch (f)
+            {
+                case TexFmt.Png: return ".png";
+                case TexFmt.Jpeg: return ".jpg";
+                case TexFmt.Hdr: return ".hdr";
+                case TexFmt.Exr: return ".exr";
+            }
+            return ".bin";
+        }
+
+        /// <summary>统一转 PNG。HDR 走 LoadTextureImage 的色调映射；EXR 本工具解不了，明确报错而不是写出坏图。</summary>
+        static byte[] ToPng(byte[] raw, out string err)
+        {
+            err = "";
+            if (Sniff(raw) == TexFmt.Exr) { err = "EXR 暂不支持转 PNG（可先用 orig 原样导出）"; return null; }
+            using (var img = LoadTextureImage(raw, out err))
+            {
+                if (img == null) return null;
+                using (var ms = new MemoryStream())
+                {
+                    img.Save(ms, ImageFormat.Png);
+                    return ms.ToArray();
+                }
+            }
+        }
+
+        /// <summary>贴图宽高（清单用）。HDR 读头，PNG/JPEG 走 GDI+；其它格式返回 0。</summary>
+        static void DimsOf(byte[] raw, out int w, out int h)
+        {
+            w = h = 0;
+            if (raw == null || raw.Length == 0) return;
+            var f = Sniff(raw);
+            if (f == TexFmt.Hdr)
+            {
+                try { Hdr.PeekSize(raw, out w, out h); } catch { w = h = 0; }
+                return;
+            }
+            if (f != TexFmt.Png && f != TexFmt.Jpeg) return;
+            try
+            {
+                using (var im = Image.FromStream(new MemoryStream(raw, false), false, false))
+                { w = im.Width; h = im.Height; }
+            }
+            catch { w = h = 0; }
+        }
+
+        /// <summary>这张贴图所属部位的材质名（去重、排序）；没有部位引用时为空串。</summary>
+        static string MaterialsFor(PartsScan ps, PartTex t)
+        {
+            var set = new List<string>();
+            foreach (var p in ps.Parts)
+            {
+                if (!t.SlotKeys.Contains(p.SlotKey)) continue;
+                foreach (var m in p.Materials)
+                    if (!set.Contains(m)) set.Add(m);
+            }
+            set.Sort(StringComparer.Ordinal);
+            return string.Join(",", set.ToArray());
+        }
+
+        /// <summary>CSV 字段转义：逗号/引号/换行都包起来。</summary>
+        static string Csv(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            if (s.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0) return s;
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        }
+
+        /// <summary>把本次导出行合并进已有 manifest：同一 (card, TexID) 用本次的覆盖，
+        /// 旧清单里本次没扫到的行保留 —— 重复导出（尤其全部跳过同名）不会把清单清空。</summary>
+        static void WriteManifestMerged(string path, List<string> lines)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var l in lines)
+            {
+                var f = ParseCsvLine(l);
+                keys.Add(f.Count > 1 ? f[0] + "\u0001" + f[1] : l);
+            }
+            var merged = new List<string>();
+            if (File.Exists(path))
+            {
+                try
+                {
+                    foreach (var old in File.ReadAllLines(path))
+                    {
+                        if (old.Length == 0) continue;
+                        var f = ParseCsvLine(old);
+                        string first = f.Count > 0 ? f[0].TrimStart('\ufeff') : "";
+                        if (f.Count > 1 && first == "card" && f[1] == "texid") continue;   // 表头
+                        string k = f.Count > 1 ? first + "\u0001" + f[1] : old;
+                        if (keys.Contains(k)) continue;                                      // 本次重新写
+                        merged.Add(old);
+                    }
+                }
+                catch { }
+            }
+            merged.AddRange(lines);
+            var sb = new StringBuilder();
+            sb.AppendLine("card,texid,class,use,format,width,height,bytes,out_bytes,slots,materials,properties,file");
+            foreach (var l in merged) sb.AppendLine(l);
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
+        }
+
+        /// <summary>最小 CSV 行解析（支持双引号包字段与 "" 转义），清单合并用。</summary>
+        static List<string> ParseCsvLine(string line)
+        {
+            var res = new List<string>();
+            var sb = new StringBuilder();
+            bool q = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (q)
+                {
+                    if (c == '"')
+                    {
+                        if (i + 1 < line.Length && line[i + 1] == '"') { sb.Append('"'); i++; }
+                        else q = false;
+                    }
+                    else sb.Append(c);
+                }
+                else
+                {
+                    if (c == '"') q = true;
+                    else if (c == ',') { res.Add(sb.ToString()); sb.Length = 0; }
+                    else sb.Append(c);
+                }
+            }
+            res.Add(sb.ToString());
+            return res;
+        }
+
+        // ---------------------------------------------------------------- 删除贴图（v1.1）
+        // 物理删除：从 TextureDictionary 移除指定 TexID，同时把 MaterialTexturePropertyList
+        // 里引用这些 TexID 的条目删掉。不重新序列化整张卡 —— 用 MpSpan 切出每个条目的原始
+        // 字节再拼接，float 宽度/字段顺序/未知字段都不会被改动。
+        // 只改两个 bin 的载荷与 bin 头，其余字节按原偏移原样复制。
+
+        /// <summary>一次删除的结果。<see cref="Bytes"/> 为 null 表示失败（看 Error）。</summary>
+        public sealed class RemoveResult
+        {
+            public byte[] Bytes;
+            public int Removed;                 // 从字典里删掉的 TexID 数
+            public int RemovedRefs;             // 从绑定表里删掉的引用条数
+            public long BytesBefore, BytesAfter;
+            public readonly List<string> Missing = new List<string>();   // 请求了但卡里没有的 TexID
+            public readonly List<string> Warnings = new List<string>();
+            public string Error = "";
+            public bool Ok { get { return Error.Length == 0 && Bytes != null; } }
+        }
+
+        sealed class BinReplace
+        {
+            public int Start, End;
+            public byte[] NewBytes;
+        }
+
+        /// <summary>从卡片字节里删除指定 TexID（字典 + 绑定表），返回新字节与自检结果。
+        /// 原字节不会被修改；失败时 Bytes = null。删除全部贴图是允许的（日志会提示）。</summary>
+        public static RemoveResult RemoveTextures(byte[] card, ICollection<string> texIds)
+        {
+            var res = new RemoveResult();
+            if (card == null || card.Length == 0) { res.Error = "卡片为空"; return res; }
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            if (texIds != null)
+                foreach (var s in texIds)
+                    if (!string.IsNullOrEmpty(s)) ids.Add(s.Trim());
+            if (ids.Count == 0) { res.Error = "没有指定要删除的 TexID"; return res; }
+            res.BytesBefore = card.Length;
+
+            var reps = new List<BinReplace>();
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            int removedRefs = 0;
+
+            // ---- 1) 所有 TextureDictionary ----
+            int from = 0;
+            while (true)
+            {
+                int kpos = Card.FindKeyFromCached(card, "TextureDictionary", from);
+                if (kpos < 0) break;
+                from = NextKeyScan(card, kpos);
+                int p = kpos;
+                var bin = MP.Read(card, ref p) as BinRef;
+                if (bin == null) continue;
+                try
+                {
+                    int count, headerEnd;
+                    var spans = MP.MapSpans(card, bin.Off, out count, out headerEnd);
+                    var keep = new List<MpSpan>();
+                    int removed = 0;
+                    foreach (var sp in spans)
+                    {
+                        int q = sp.Start;
+                        object k = MP.Read(card, ref q);
+                        string ks = k == null ? "" : k.ToString();
+                        if (k != null && ids.Contains(ks)) { removed++; found.Add(ks); }
+                        else keep.Add(sp);
+                    }
+                    if (removed == 0) continue;
+                    res.Removed += removed;
+                    reps.Add(new BinReplace
+                    {
+                        Start = bin.Off - bin.HeaderLen,
+                        End = bin.Off + bin.Len,
+                        NewBytes = BuildBinPayload(MP.MapHeader(keep.Count), card, keep)
+                    });
+                }
+                catch (Exception ex) { res.Warnings.Add("TextureDictionary 解析失败，已跳过：" + ex.Message); }
+            }
+
+            // ---- 2) 所有 MaterialTexturePropertyList ----
+            from = 0;
+            while (true)
+            {
+                int kpos = Card.FindKeyFromCached(card, "MaterialTexturePropertyList", from);
+                if (kpos < 0) break;
+                from = NextKeyScan(card, kpos);
+                int p = kpos;
+                var bin = MP.Read(card, ref p) as BinRef;
+                if (bin == null) continue;
+                try
+                {
+                    int count, headerEnd;
+                    var spans = MP.ArraySpans(card, bin.Off, out count, out headerEnd);
+                    var keep = new List<MpSpan>();
+                    int removed = 0;
+                    foreach (var sp in spans)
+                    {
+                        int q = sp.Start;
+                        var m = MP.Read(card, ref q) as MMap;
+                        if (m == null) { keep.Add(sp); continue; }
+                        object id = m.Get("TexID");
+                        if (id != null && ids.Contains(id.ToString())) { removed++; removedRefs++; found.Add(id.ToString()); }
+                        else keep.Add(sp);
+                    }
+                    if (removed == 0) continue;
+                    reps.Add(new BinReplace
+                    {
+                        Start = bin.Off - bin.HeaderLen,
+                        End = bin.Off + bin.Len,
+                        NewBytes = BuildBinPayload(MP.ArrayHeader(keep.Count), card, keep)
+                    });
+                }
+                catch (Exception ex) { res.Warnings.Add("MaterialTexturePropertyList 解析失败，已跳过：" + ex.Message); }
+            }
+
+            foreach (var id in ids) if (!found.Contains(id)) res.Missing.Add(id);
+            res.RemovedRefs = removedRefs;
+            if (reps.Count == 0)
+            {
+                res.Bytes = card;                 // 没找到：原样返回，调用方按 Missing 提示
+                res.BytesAfter = card.Length;
+                return res;
+            }
+
+            // ---- 3) 按偏移升序拼接（区间不能重叠）----
+            reps.Sort(delegate (BinReplace a, BinReplace b) { return a.Start.CompareTo(b.Start); });
+            for (int i = 1; i < reps.Count; i++)
+                if (reps[i].Start < reps[i - 1].End) { res.Error = "内部错误：替换区间重叠"; return res; }
+            long newLen = card.Length;
+            foreach (var r in reps) newLen += (long)r.NewBytes.Length - (r.End - r.Start);
+            if (newLen <= 0 || newLen > int.MaxValue) { res.Error = "新卡片长度异常（" + newLen + "）"; return res; }
+            var outBytes = new byte[newLen];
+            int w = 0, cur = 0;
+            foreach (var r in reps)
+            {
+                if (r.Start < cur || r.End > card.Length || r.Start >= r.End) { res.Error = "内部错误：替换区间越界"; return res; }
+                Buffer.BlockCopy(card, cur, outBytes, w, r.Start - cur); w += r.Start - cur;
+                Buffer.BlockCopy(r.NewBytes, 0, outBytes, w, r.NewBytes.Length); w += r.NewBytes.Length;
+                cur = r.End;
+            }
+            Buffer.BlockCopy(card, cur, outBytes, w, card.Length - cur); w += card.Length - cur;
+            if (w != outBytes.Length) { res.Error = "内部错误：输出长度不一致"; return res; }
+
+            // ---- 4) 写出前自检 ----
+            string err = VerifyRemoval(outBytes, ids, res.Warnings);
+            if (!string.IsNullOrEmpty(err)) { res.Error = "自检失败：" + err; return res; }
+            res.Bytes = outBytes;
+            res.BytesAfter = outBytes.Length;
+            return res;
+        }
+
+        /// <summary>同名键可能出现在贴图字节里；扫描下一个键之前先跳过整个值，
+        /// 避免把载荷里的偶然字符串当成键。解析失败时只前进 1 字节，保证不死循环。</summary>
+        static int NextKeyScan(byte[] card, int keyValuePos)
+        {
+            try
+            {
+                int next = MP.Skip(card, keyValuePos);
+                return next > keyValuePos ? next : keyValuePos + 1;
+            }
+            catch { return keyValuePos + 1; }
+        }
+
+        /// <summary>用「新头部 + 保留条目的原始字节」拼一个 bin32 载荷。</summary>
+        static byte[] BuildBinPayload(byte[] header, byte[] card, List<MpSpan> keep)
+        {
+            long n = 5L + header.Length;
+            foreach (var sp in keep) n += sp.End - sp.Start;
+            if (n > int.MaxValue) throw new InvalidOperationException("载荷过大");
+            var o = new byte[(int)n];
+            var bh = MP.Bin32Header((int)(n - 5));
+            Buffer.BlockCopy(bh, 0, o, 0, 5);
+            int w = 5;
+            Buffer.BlockCopy(header, 0, o, w, header.Length); w += header.Length;
+            foreach (var sp in keep)
+            {
+                int len = sp.End - sp.Start;
+                Buffer.BlockCopy(card, sp.Start, o, w, len); w += len;
+            }
+            return o;
+        }
+
+        /// <summary>删除后的结构自检：PNG 完整、被删 TexID 不残留在字典/绑定表。
+        /// 原卡本来就有的悬空引用只记警告，不算失败。</summary>
+        static string VerifyRemoval(byte[] card, HashSet<string> removed, List<string> warnings)
+        {
+            if (Card.PngEnd(card) < 0) return "PNG/IEND 结构损坏";
+            var dict = new HashSet<string>(StringComparer.Ordinal);
+            int from = 0;
+            while (true)
+            {
+                int kpos = Card.FindKeyFromCached(card, "TextureDictionary", from);
+                if (kpos < 0) break;
+                from = NextKeyScan(card, kpos);
+                int p = kpos;
+                var bin = MP.Read(card, ref p) as BinRef;
+                if (bin == null) continue;
+                try
+                {
+                    int count, headerEnd;
+                    var spans = MP.MapSpans(card, bin.Off, out count, out headerEnd);
+                    foreach (var sp in spans)
+                    {
+                        int q = sp.Start;
+                        object k = MP.Read(card, ref q);
+                        if (k != null) dict.Add(k.ToString());
+                    }
+                }
+                catch (Exception ex) { return "字典解析失败：" + ex.Message; }
+            }
+            var dangling = new HashSet<string>(StringComparer.Ordinal);
+            from = 0;
+            while (true)
+            {
+                int kpos = Card.FindKeyFromCached(card, "MaterialTexturePropertyList", from);
+                if (kpos < 0) break;
+                from = NextKeyScan(card, kpos);
+                int p = kpos;
+                var bin = MP.Read(card, ref p) as BinRef;
+                if (bin == null) continue;
+                try
+                {
+                    int count, headerEnd;
+                    var spans = MP.ArraySpans(card, bin.Off, out count, out headerEnd);
+                    foreach (var sp in spans)
+                    {
+                        int q = sp.Start;
+                        var m = MP.Read(card, ref q) as MMap;
+                        if (m == null) continue;
+                        object id = m.Get("TexID");
+                        if (id == null) continue;
+                        string s = id.ToString();
+                        if (removed.Contains(s)) return "TexID " + s + " 仍被绑定表引用";
+                        if (!dict.Contains(s)) dangling.Add(s);
+                    }
+                }
+                catch (Exception ex) { return "绑定表解析失败：" + ex.Message; }
+            }
+            foreach (var id in removed) if (dict.Contains(id)) return "TexID " + id + " 仍在字典里";
+            if (dangling.Count > 0 && warnings != null)
+            {
+                var l = new List<string>(dangling);
+                l.Sort(StringComparer.Ordinal);
+                if (l.Count > 12) l.RemoveRange(12, l.Count - 12);
+                warnings.Add("新卡仍有 " + dangling.Count + " 个悬空引用（原卡可能就有）：" + string.Join(",", l.ToArray()));
+            }
+            return "";
         }
 
         /// <summary>按部位压缩时，把各部位对同一张贴图的要求合并成一条规则。

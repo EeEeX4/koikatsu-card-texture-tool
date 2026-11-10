@@ -176,7 +176,7 @@ namespace KoiCardTexTool
         static bool IsCommand(string s)
         {
             string c = (s ?? "").ToLowerInvariant();
-            return c == "scan" || c == "compress" || c == "batch" || c == "info" || c == "uitest" || c == "help" || c == "-h" || c == "--help" || c == "dlgtest" || c == "mboxtest" || c == "hdrtest" || c == "parts" || c == "preset" || c == "chara" || c == "pngtest" || c == "pngre" || c == "jpegopt" || c == "blk";
+            return c == "scan" || c == "compress" || c == "batch" || c == "info" || c == "uitest" || c == "help" || c == "-h" || c == "--help" || c == "dlgtest" || c == "mboxtest" || c == "hdrtest" || c == "parts" || c == "preset" || c == "chara" || c == "pngtest" || c == "pngre" || c == "jpegopt" || c == "blk" || c == "extract" || c == "delete";
         }
 
         static bool IsAllDigits(string s)
@@ -525,6 +525,11 @@ CLI:
                               [slots=部位:格式:最大边,...] [preset=preset.json] [log=out.txt]
   KoiCardTexTool.exe batch    <in_dir> [out_dir] [max_size] [mode] [quality] [mask_size]
                               [plan=plan.json] [preset=preset.json] [recurse=0|1] [suffix=[zip]] [log=out.txt]
+  KoiCardTexTool.exe extract  <card.png|目录> [out_dir] [recurse=0|1] [format=orig|png]
+                              [purpose=all|clothes|accessory|body|referenced|orphan]
+                              [overwrite=0|1] [flat=1] [manifest=0] [log=out.txt]
+  KoiCardTexTool.exe delete   <in.png> <out.png> texids=6,7 | texids=orphans
+                              [overwrite=1] [log=out.txt]
 
 mode   = png | jpg | auto（默认）| maintex（只压 MainTex，其余贴图字节不动）
 max_size / mask_size = 最长边上限，0 = 不缩放
@@ -554,7 +559,23 @@ batch 给目录时默认递归读所有子文件夹，输出按同样结构摆�
   · 省略 out_dir → 输出到 <in_dir>\<in_dir 的名字>[zip]\
   · 输出卡片名默认是「原名[zip].png」，用 suffix= 改（suffix= 空表示保持原名）
   · 以 [zip] 结尾的目录 / 带 .koicardtex-outdir 标记的目录不会被当作输入
-  · recurse=0 只读顶层");
+  · recurse=0 只读顶层
+
+extract = 把卡片里的贴图导出到磁盘（只读，不改卡片）：
+  · 默认保持原格式（PNG/JPEG/HDR/EXR 原字节），按卡分目录，并写 manifest.csv
+  · format=png 统一转 PNG（HDR 做色调映射；EXR 不支持）；flat=1 全部平铺到输出目录
+  · purpose= 只导某一类：衣服 / 饰品 / 身体 / 有引用 / 未引用
+  · 输出目录默认：目录 → <目录>\_textures，单卡 → <父目录>\_textures
+  · manifest.csv 记录每张贴图的 TexID、类型、用途、尺寸、字节、槽位、材质、属性、文件
+  · 例：extract D:\cards D:\tex purpose=clothes recurse=1
+        extract card.png format=png overwrite=1
+
+delete = 从卡片里物理删除指定贴图（同时清理材质绑定），另存为新卡：
+  · texids= 逗号分隔的 TexID；texids=orphans 删除所有没有任何部位引用的贴图
+  · 默认拒绝覆盖输入卡；确实要覆盖就加 overwrite=1（先备份）
+  · 删除后自动复检：被删 TexID 不残留、无悬空引用、PNG 结构完整
+  · 例：delete card.png out.png texids=6,7
+        delete card.png out.png texids=orphans");
         }
 
         static int RunCli(string[] argv)
@@ -611,6 +632,152 @@ batch 给目录时默认递归读所有子文件夹，输出按同样结构摆�
                         }
                     }
                     if (anyDir || paths.Count > 1) Cli.W(L.F("合计 {0} 张贴图。", total));
+                    return 0;
+                }
+
+                if (cmd == "extract")
+                {
+                    if (a.Count < 2) { Usage(); return 1; }
+                    string input = a[1];
+                    if (!File.Exists(input) && !Directory.Exists(input))
+                    {
+                        Cli.W("找不到输入：" + input);
+                        return 1;
+                    }
+                    var opt = new TexTool.ExportOptions();
+                    bool rec = true;
+                    string outDir = null;
+                    var unknown = new List<string>();
+                    for (int i = 2; i < a.Count; i++)
+                    {
+                        string s = a[i];
+                        string low = s.ToLowerInvariant();
+                        if (low.StartsWith("recurse=")) { rec = low.Substring(8) != "0"; continue; }
+                        if (low.StartsWith("format=")) { opt.Format = low.Substring(7).Trim(); continue; }
+                        if (low.StartsWith("purpose=")) { opt.Purpose = low.Substring(8).Trim(); continue; }
+                        if (low.StartsWith("overwrite=")) { opt.Overwrite = low.Substring(10) != "0"; continue; }
+                        if (low.StartsWith("flat=")) { opt.PerCardFolder = low.Substring(5) != "1"; continue; }
+                        if (low.StartsWith("manifest=")) { opt.WriteManifest = low.Substring(9) != "0"; continue; }
+                        if (outDir == null && s.IndexOf('=') < 0) { outDir = s; continue; }
+                        unknown.Add(s);
+                    }
+                    if (unknown.Count > 0) Cli.W("忽略不认识的参数：" + string.Join(" ", unknown.ToArray()));
+                    string fmt = (opt.Format ?? "").Trim().ToLowerInvariant();
+                    if (fmt != "orig" && fmt != "png") { Cli.W("format 只支持 orig / png"); return 1; }
+                    opt.Format = fmt;
+                    string purpose = (opt.Purpose ?? "").Trim().ToLowerInvariant();
+                    if (purpose != "all" && purpose != "clothes" && purpose != "accessory"
+                        && purpose != "body" && purpose != "referenced" && purpose != "orphan")
+                    {
+                        Cli.W("purpose 只支持 all / clothes / accessory / body / referenced / orphan");
+                        return 1;
+                    }
+                    opt.Purpose = purpose;
+                    opt.OutDir = string.IsNullOrEmpty(outDir) ? TexTool.DefaultExportOut(input) : outDir;
+
+                    var cards = new List<string>();
+                    if (Directory.Exists(input))
+                    {
+                        foreach (var cf in TexTool.Enumerate(input, opt.OutDir, rec)) cards.Add(cf.Src);
+                        Cli.W(L.F("{0}: 共 {1} 个 .png（{2}子文件夹）", input, cards.Count, rec ? "含" : "不含"));
+                    }
+                    else cards.Add(input);
+                    if (cards.Count == 0) { Cli.W("没有找到卡片。"); return 1; }
+
+                    Cli.W(L.F("导出贴图 → {0}（格式 {1}，用途 {2}，{3}）",
+                        opt.OutDir, opt.Format, opt.Purpose, opt.Overwrite ? "覆盖同名" : "跳过同名"));
+                    var res = TexTool.ExportCards(cards, opt, null, delegate (string s) { Cli.W(s); });
+                    Cli.W(L.F("======== 导出汇总：卡片 {0} 张 / 贴图 {1} 张 / 跳过 {2} / 失败 {3}",
+                        res.Cards, res.Files, res.Skipped, res.Failed));
+                    Cli.W(L.F("用途：衣服 {0} 张 / 饰品 {1} 张 / 身体 {2} 张 / 未引用 {3} 张",
+                        res.Clothes, res.Accessory, res.Body, res.Orphan));
+                    Cli.W(L.F("写出 {0}；清单 {1}", TexTool.Human(res.Bytes), res.ManifestPath));
+                    if (res.Errors.Count > 0)
+                    {
+                        Cli.W("错误：");
+                        for (int i = 0; i < res.Errors.Count && i < 30; i++) Cli.W("  " + res.Errors[i]);
+                        if (res.Errors.Count > 30) Cli.W(L.F("  …共 {0} 条，见日志", res.Errors.Count));
+                    }
+                    return res.Failed > 0 ? 1 : 0;
+                }
+
+                if (cmd == "delete")
+                {
+                    if (a.Count < 3) { Usage(); return 1; }
+                    string input = a[1], output = a[2];
+                    if (!File.Exists(input)) { Cli.W("找不到输入卡：" + input); return 1; }
+                    string idSpec = null;
+                    bool overwrite = false;
+                    for (int i = 3; i < a.Count; i++)
+                    {
+                        string low = a[i].ToLowerInvariant();
+                        if (low.StartsWith("texids=")) { idSpec = a[i].Substring(7); continue; }
+                        if (low.StartsWith("overwrite=")) { overwrite = low.Substring(10) != "0"; continue; }
+                        Cli.W("忽略不认识的参数：" + a[i]);
+                    }
+                    if (string.IsNullOrEmpty(idSpec))
+                    {
+                        Cli.W("缺少 texids=（例如 texids=6,7 或 texids=orphans）");
+                        return 1;
+                    }
+                    bool same = string.Equals(Path.GetFullPath(input), Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase);
+                    if (same && !overwrite)
+                    {
+                        Cli.W("输出与输入相同。要覆盖原卡请加 overwrite=1（建议先备份）。");
+                        return 1;
+                    }
+
+                    byte[] card;
+                    try { card = File.ReadAllBytes(input); }
+                    catch (Exception ex) { Cli.W("读取失败：" + ex.Message); return 1; }
+
+                    var ids = new List<string>();
+                    if (idSpec.Trim().Equals("orphans", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var ps = TexTool.ScanParts(input);
+                        if (!string.IsNullOrEmpty(ps.Err)) { Cli.W("读卡失败：" + ps.Err); return 1; }
+                        foreach (var t in ps.Orphans) if (t.Id != null) ids.Add(t.Id.ToString());
+                        Cli.W(L.F("未引用贴图：{0} 张", ids.Count));
+                        if (ids.Count == 0) { Cli.W("没有未引用贴图，未改动。"); return 0; }
+                    }
+                    else
+                    {
+                        foreach (var s in idSpec.Split(','))
+                        {
+                            string t = s.Trim();
+                            if (t.Length > 0) ids.Add(t);
+                        }
+                    }
+                    if (ids.Count == 0) { Cli.W("没有指定要删除的 TexID"); return 1; }
+
+                    Cli.W(L.F("删除贴图：{0}（{1}）", input, string.Join(",", ids.ToArray())));
+                    var res = TexTool.RemoveTextures(card, ids);
+                    if (!res.Ok) { Cli.W("失败：" + res.Error); return 1; }
+                    foreach (var w in res.Warnings) Cli.W("警告：" + w);
+                    if (res.Missing.Count > 0) Cli.W("卡里没找到：" + string.Join(",", res.Missing.ToArray()));
+                    Cli.W(L.F("字典删除 {0} 张 / 绑定引用删除 {1} 条", res.Removed, res.RemovedRefs));
+                    Cli.W(L.F("卡片 {0} → {1}", TexTool.Human(res.BytesBefore), TexTool.Human(res.BytesAfter)));
+
+                    string tmp = output + ".tmp-" + Guid.NewGuid().ToString("N");
+                    try
+                    {
+                        string dir = Path.GetDirectoryName(Path.GetFullPath(output));
+                        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                        File.WriteAllBytes(tmp, res.Bytes);
+                        File.Move(tmp, output, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                        Cli.W("写出失败：" + ex.Message);
+                        return 1;
+                    }
+
+                    var ps2 = TexTool.ScanParts(output);
+                    if (string.IsNullOrEmpty(ps2.Err))
+                        Cli.W(L.F("输出卡：{0} 张贴图 / {1}；未引用 {2} 张",
+                            ps2.NTex, TexTool.Human(ps2.Bytes), ps2.Orphans.Count));
+                    else Cli.W("输出卡复检失败：" + ps2.Err);
                     return 0;
                 }
 

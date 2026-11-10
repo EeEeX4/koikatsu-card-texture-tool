@@ -378,7 +378,7 @@ namespace KoiCardTexTool
             gridGT.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             gridGT.AllowUserToResizeRows = false;             // v2.24：行高不许拖（容易误触）
             gridGT.ScrollBars = ScrollBars.Both;
-            gridGT.SelectionMode = DataGridViewSelectionMode.FullRowSelect; gridGT.MultiSelect = false;
+            gridGT.SelectionMode = DataGridViewSelectionMode.FullRowSelect; gridGT.MultiSelect = true;   // v1.1：多选删除/导出
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tid", HeaderText = "TexID", ReadOnly = true, FillWeight = 6, MinimumWidth = 48 });
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tcls", HeaderText = "类型", ReadOnly = true, FillWeight = 8, MinimumWidth = 54 });
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tdim", HeaderText = "尺寸", ReadOnly = true, FillWeight = 6, MinimumWidth = 56 });
@@ -386,6 +386,8 @@ namespace KoiCardTexTool
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tbytes", HeaderText = "大小", ReadOnly = true, FillWeight = 8, MinimumWidth = 62 });
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tfmt", HeaderText = "原格式", ReadOnly = true, FillWeight = 6, MinimumWidth = 54 });
             gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tshare", HeaderText = "共用情况", ReadOnly = true, FillWeight = 20, MinimumWidth = 70 });
+            // v1.1：用途（衣服/饰品/身体/未引用）
+            gridGT.Columns.Add(new DataGridViewTextBoxColumn { Name = "tpurpose", HeaderText = "用途", ReadOnly = true, FillWeight = 14, MinimumWidth = 86 });
             var cbTF = new DataGridViewComboBoxColumn { Name = "trule", HeaderText = "处理方式", FillWeight = 12, MinimumWidth = 74, FlatStyle = FlatStyle.Flat };
             cbTF.Items.AddRange(TexFmtItems);
             var cbTS = new DataGridViewComboBoxColumn { Name = "tsize", HeaderText = "最大边", FillWeight = 10, MinimumWidth = 62, FlatStyle = FlatStyle.Flat };
@@ -438,6 +440,26 @@ namespace KoiCardTexTool
             texBox3.Controls.Add(prevG3, 0, 2);
             spPrev3 = MakeRowSplitter(texBox3, 1, 0, 2, 140, 70);            // 明细 | 预览：上下拖
             gbGT.Controls.Add(texBox3);
+            // v1.1：导出工具栏（贴在明细表上方）+ 右键菜单
+            var barExp3 = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(0, 2, 0, 2) };
+            var btnExpSel3 = new Button { Text = "导出选中…", AutoSize = true };
+            L.Tip(btnExpSel3, "把当前选中的贴图导出到磁盘（只读，不改卡片）。");
+            btnExpSel3.Click += delegate { ExportTexFromGrid(gridGT, g3Cards.Count > 0 ? g3Cards[0] : txtG3Card.Text.Trim(), true, Log3); };
+            var btnExpAll3 = new Button { Text = "导出全部…", AutoSize = true };
+            L.Tip(btnExpAll3, "把这张卡里的全部贴图导出到磁盘（只读，不改卡片）。");
+            btnExpAll3.Click += delegate { ExportTexFromGrid(gridGT, g3Cards.Count > 0 ? g3Cards[0] : txtG3Card.Text.Trim(), false, Log3); };
+            var btnSelAll3 = new Button { Text = "全选", AutoSize = true };
+            L.Tip(btnSelAll3, "选中明细里的全部贴图（之后可导出或删除）。");
+            btnSelAll3.Click += delegate { if (gridGT.Rows.Count > 0) gridGT.SelectAll(); };
+            barExp3.Controls.Add(btnSelAll3);
+            barExp3.Controls.Add(btnExpSel3);
+            barExp3.Controls.Add(btnExpAll3);
+            var btnDel3 = new Button { Text = "删除选中…", AutoSize = true };
+            L.Tip(btnDel3, "从卡片里物理删除选中的贴图（同时清理绑定），另存为新卡；原卡不会自动覆盖。");
+            btnDel3.Click += delegate { DeleteTexFromGrid(gridGT, g3Cards.Count > 0 ? g3Cards[0] : txtG3Card.Text.Trim(), Log3); };
+            barExp3.Controls.Add(btnDel3);
+            gbGT.Controls.Add(barExp3);
+            gridGT.ContextMenuStrip = BuildTexMenu(gridGT, delegate { return g3Cards.Count > 0 ? g3Cards[0] : txtG3Card.Text.Trim(); }, Log3);
             gridGT.SelectionChanged += delegate
             {
                 if (g3Filling) return;                  // v2.30：重填/排序期间不重复刷
@@ -925,6 +947,7 @@ namespace KoiCardTexTool
                 row.Cells["tbytes"].Value = TexTool.Human(tx.Bytes);
                 row.Cells["tfmt"].Value = tx.Fmt;
                 row.Cells["tshare"].Value = tx.Shared ? ("与 " + tx.SlotNames + " 共用") : "独享";
+                row.Cells["tpurpose"].Value = TexTool.UseLabelUi(tx.SlotKeys);
                 row.Cells["trule"].Value = hasOv ? KeyToFmtItem(ov.Format) : "跟随部位";
                 row.Cells["tsize"].Value = hasOv ? (ov.Size > 0 ? ov.Size.ToString() : "不缩放") : "跟随部位";
                 row.Cells["tsh"].Value = hasOv ? SharpenValToItem(ov.SharpenPct) : "跟随部位";

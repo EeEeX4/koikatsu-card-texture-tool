@@ -1,4 +1,4 @@
-# Manual (1.0)
+# Manual (1.2)
 
 Koikatsu Coordinate/Chara Texture Optimization Tool — recompresses the textures inside a card to make the card file smaller.
 
@@ -109,6 +109,25 @@ KoiCardTexTool.exe preset   card.png a.json parts=top:auto:512 tex=26:png:256
 `max_size` = longest-edge limit, `0` = no resizing
 
 ---
+
+### Export / delete textures (v1.2)
+
+**Export** — the texture list on tabs 2 / 3 supports Ctrl/Shift multi-select and a **Select all** button. Use the context menu or **Export selected… / Export all…** to write textures to disk (read-only; the card is not modified). The **Export textures…** button on tab 1 handles a single card or a whole folder (recursive when **Include subfolders** is checked). The original format is kept and a `manifest.csv` is written (TexID, class, use, size, bytes, slots, materials, properties, file).
+
+```bat
+KoiCardTexTool.exe extract card.png D:\tex                  :: all textures + manifest.csv
+KoiCardTexTool.exe extract D:\cards D:\tex purpose=clothes  :: clothes only
+KoiCardTexTool.exe extract card.png D:\tex format=png       :: convert to PNG (HDR tone-mapped)
+```
+
+**Delete** — select one or more rows, then use the context menu **Delete selected textures…** or the toolbar **Delete selected…**. The confirmation lists TexIDs, sizes, shared parts and the card size change; the result is saved as `<name>_texremoved.png` by default and the original is left untouched. Bindings in `MaterialTexturePropertyList` are removed as well, and the output is verified before writing (no leftovers, no new dangling refs, valid PNG structure).
+
+```bat
+KoiCardTexTool.exe delete in.png out.png texids=6,7       :: remove specific TexIDs
+KoiCardTexTool.exe delete in.png out.png texids=orphans   :: remove all unreferenced textures
+```
+
+> Deleted material properties fall back to the shader defaults; shared textures affect every part that referenced them. Test the result in-game with a copy first.
 
 ## 6. FAQ
 

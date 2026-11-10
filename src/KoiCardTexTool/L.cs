@@ -1540,6 +1540,101 @@ namespace KoiCardTexTool
             Add("只被一个部位用到的贴图不跟着降 —— 它往往是那个部位唯一的高清来源。",
                 "Textures used by only one part are not downscaled — often that part's only hi-res source.",
                 "1 つの部位だけが使うテクスチャは縮小しません（その部位唯一の高解像度元が多い）。");
+            // ---- v1.1：导出 / 删除贴图 ----
+            Add("用途", "Use", "用途");
+            Add("未引用", "Unreferenced", "未参照");
+            Add("导出选中…", "Export selected…", "選択をエクスポート…");
+            Add("导出全部…", "Export all…", "すべてエクスポート…");
+            Add("删除选中…", "Delete selected…", "選択を削除…");
+            Add("导出选中贴图…", "Export selected textures…", "選択テクスチャをエクスポート…");
+            Add("导出本卡全部贴图…", "Export all textures in this card…", "このカードの全テクスチャをエクスポート…");
+            Add("删除选中贴图…", "Delete selected textures…", "選択テクスチャを削除…");
+            Add("选择贴图导出目录", "Choose a texture export folder", "テクスチャの出力先フォルダーを選択");
+            Add("另存为新卡", "Save as a new card", "新しいカードとして保存");
+            Add("Koikatsu 卡片|*.png", "Koikatsu card|*.png", "Koikatsu カード|*.png");
+            Add("删除贴图", "Delete textures", "テクスチャを削除");
+            Add("导出贴图", "Export textures", "テクスチャをエクスポート");
+            Add("覆盖原卡", "Overwrite the original card", "元のカードを上書き");
+            Add("把当前选中的贴图导出到磁盘（只读，不改卡片）。",
+                "Exports the selected textures to disk (read-only; the card is not modified).",
+                "選択中のテクスチャをディスクへ書き出します（読み取りのみ、カードは変更しません）。");
+            Add("把这张卡里的全部贴图导出到磁盘（只读，不改卡片）。",
+                "Exports every texture in this card to disk (read-only; the card is not modified).",
+                "このカードの全テクスチャをディスクへ書き出します（読み取りのみ、カードは変更しません）。");
+            Add("从卡片里物理删除选中的贴图（同时清理绑定），另存为新卡；原卡不会自动覆盖。",
+                "Physically removes the selected textures from the card (and clears their bindings), saving as a new card; the original is never overwritten automatically.",
+                "選択テクスチャをカードから物理削除し（バインドも整理）、新しいカードとして保存します。元のカードは自動では上書きしません。");
+            Add("请先读取一张卡，并在贴图明细里选中要导出的行。",
+                "Load a card first, then select the texture rows to export.",
+                "先にカードを読み込み、エクスポートするテクスチャ行を選択してください。");
+            Add("卡片路径无效，无法导出。",
+                "The card path is invalid; cannot export.",
+                "カードのパスが無効なため、エクスポートできません。");
+            Add("请先选中至少一行贴图。",
+                "Select at least one texture row first.",
+                "テクスチャ行を 1 つ以上選択してください。");
+            Add("请先读取一张卡，并在贴图明细里选中要删除的行。",
+                "Load a card first, then select the texture rows to delete.",
+                "先にカードを読み込み、削除するテクスチャ行を選択してください。");
+            Add("卡片路径无效，无法删除。",
+                "The card path is invalid; cannot delete.",
+                "カードのパスが無効なため、削除できません。");
+            Add("请先选中至少一行贴图（可按住 Ctrl/Shift 多选）。",
+                "Select at least one texture row (Ctrl/Shift for multiple).",
+                "テクスチャ行を 1 つ以上選択してください（Ctrl/Shift で複数選択）。");
+            Add("这会覆盖原卡。建议先备份。确定继续？",
+                "This will overwrite the original card. Back it up first. Continue?",
+                "元のカードを上書きします。先にバックアップしてください。続行しますか？");
+            Add("导出失败：{0}", "Export failed: {0}", "エクスポート失敗：{0}");
+            Add("导出完成：{0} 张 / 跳过 {1} / 失败 {2}\r\n写出 {3}\r\n目录：{4}",
+                "Export complete: {0} file(s) / skipped {1} / failed {2}\r\nWrote {3}\r\nFolder: {4}",
+                "エクスポート完了：{0} 件 / スキップ {1} / 失敗 {2}\r\n書き出し {3}\r\nフォルダー：{4}");
+            Add("读取卡片失败：{0}", "Failed to read the card: {0}", "カードの読み込みに失敗：{0}");
+            Add("删除失败：{0}", "Delete failed: {0}", "削除失敗：{0}");
+            Add("卡里没有找到这些 TexID：{0}",
+                "These TexIDs were not found in the card: {0}",
+                "カード内にこれらの TexID が見つかりません：{0}");
+            Add("将删除 {0} 张贴图：\r\n{1}\r\n卡片 {2} → {3}\r\n\r\n删除后这些材质属性会回落到 shader 默认值；共用贴图会影响所有引用它的部位。\r\n是否继续？",
+                "About to delete {0} texture(s):\r\n{1}\r\nCard {2} → {3}\r\n\r\nThose material properties will fall back to the shader defaults; shared textures affect every part that references them.\r\nContinue?",
+                "テクスチャを {0} 枚削除します：\r\n{1}\r\nカード {2} → {3}\r\n\r\n削除後、これらのマテリアル属性はシェーダーの既定値に戻ります。共有テクスチャは参照するすべての部位に影響します。\r\n続行しますか？");
+            Add("写出失败：{0}", "Failed to write: {0}", "書き出しに失敗：{0}");
+            Add("删除贴图：{0} 张（绑定引用 {1} 条）→ {2}",
+                "Deleted {0} texture(s) ({1} binding reference(s)) → {2}",
+                "テクスチャ {0} 枚（バインド参照 {1} 件）を削除 → {2}");
+            Add("卡片 {0} → {1}", "Card {0} → {1}", "カード {0} → {1}");
+            Add("已保存：{0}\r\n删除 {1} 张 / 绑定引用 {2} 条",
+                "Saved: {0}\r\nDeleted {1} texture(s) / {2} binding reference(s)",
+                "保存しました：{0}\r\nテクスチャ {1} 枚 / バインド参照 {2} 件を削除");
+            Add("卡片 {0}：导出 {1} 张 / 跳过 {2} 张 / 失败 {3} 张（贴图共 {4} 张）",
+                "{0}: exported {1} / skipped {2} / failed {3} (of {4} textures)",
+                "{0}：{1} 件書き出し / スキップ {2} / 失敗 {3}（全 {4} 枚）");
+            Add("警告：", "Warning: ", "警告：");
+            // ---- v1.2.1：全选 / 文件夹导出 ----
+            Add("全选", "Select all", "すべて選択");
+            Add("导出贴图…", "Export textures…", "テクスチャをエクスポート…");
+            Add("把输入卡片/文件夹里的贴图导出到磁盘（只读，不改卡）。",
+                "Exports textures from the input card/folder to disk (read-only; cards are not modified).",
+                "入力カード/フォルダーのテクスチャをディスクへ書き出します（読み取りのみ、カードは変更しません）。");
+            Add("请先选择一张卡或一个文件夹。",
+                "Choose a card or a folder first.",
+                "先にカードまたはフォルダーを選択してください。");
+            Add("没有找到卡片。", "No cards found.", "カードが見つかりません。");
+            Add("正在导出贴图：{0} 张卡…",
+                "Exporting textures: {0} card(s)…",
+                "テクスチャを書き出し中：{0} 枚…");
+            Add("导出完成：{0} 张 / 跳过 {1} / 失败 {2}",
+                "Export complete: {0} / skipped {1} / failed {2}",
+                "エクスポート完了：{0} / スキップ {1} / 失敗 {2}");
+            Add("导出失败", "Export failed", "エクスポート失敗");
+            Add("选中明细里的全部贴图（之后可导出或删除）。",
+                "Selects every texture row (then export or delete them).",
+                "一覧の全テクスチャ行を選択します（その後エクスポートまたは削除）。");
+            Add("跳过 {0} 张：目标目录已有同名文件。",
+                "{0} skipped: same-named files already exist in the target folder.",
+                "{0} 件スキップ：出力先に同名ファイルが既にあります。");
+            Add("跳过 {0} 张：目标目录已有同名文件（勾选「覆盖同名」可重写）。",
+                "{0} skipped: same-named files already exist in the target folder (enable Overwrite to rewrite them).",
+                "{0} 件スキップ：出力先に同名ファイルが既にあります（「同名を上書き」をオンにすると再書き出しします）。");
             LKo.Fill();          // v1.0.1：韩语表（单独文件，便于再加语言）
         }
     }
