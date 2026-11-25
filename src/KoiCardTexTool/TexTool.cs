@@ -1384,6 +1384,9 @@ namespace KoiCardTexTool
             Buffer.BlockCopy(card, cur, outBytes, w, card.Length - cur); w += card.Length - cur;
             if (w != outBytes.Length) { res.Error = "内部错误：输出长度不一致"; return res; }
 
+            // 删除改变了 KKEx 块的大小：同步卡头里的块大小 / 数据长度（认不出布局则原样不动）
+            outBytes = CardHeader.AfterSplice(outBytes, reps[0].Start, outBytes.Length - card.Length);
+
             // ---- 4) 写出前自检 ----
             string err = VerifyRemoval(outBytes, ids, res.Warnings);
             if (!string.IsNullOrEmpty(err)) { res.Error = "自检失败：" + err; return res; }
@@ -3002,13 +3005,9 @@ namespace KoiCardTexTool
 
             var swPack = Stopwatch.StartNew();
             byte[] newBin = inner.ToArray();
-            var outBytes = new byte[end + (bin.Off - 5 - end) + 5 + newBin.Length + (b.Length - (bin.Off + bin.Len))];
-            int w0 = 0;
-            Buffer.BlockCopy(b, 0, outBytes, w0, end); w0 += end;                       // thumbnail PNG
-            Buffer.BlockCopy(b, end, outBytes, w0, bin.Off - 5 - end); w0 += bin.Off - 5 - end;
-            var bh = MP.Bin32Header(newBin.Length);            Buffer.BlockCopy(bh, 0, outBytes, w0, 5); w0 += 5;
-            Buffer.BlockCopy(newBin, 0, outBytes, w0, newBin.Length); w0 += newBin.Length;
-            Buffer.BlockCopy(b, bin.Off + bin.Len, outBytes, w0, b.Length - (bin.Off + bin.Len));
+            int oldHdrAt;
+            byte[] outBytes = MP.ReplaceBin(b, bin, newBin, out oldHdrAt);   // (the old header is 2/3/5 bytes, see BinRef.HeaderLen)
+            outBytes = CardHeader.AfterSplice(outBytes, oldHdrAt, outBytes.Length - b.Length);   // keep KKEx size / data length true
             File.WriteAllBytes(dst, outBytes);
             res.TPack += swPack.Elapsed.TotalMilliseconds;
 

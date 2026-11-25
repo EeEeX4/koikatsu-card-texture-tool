@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+**修复：压缩后的卡里 MaterialEditor 的键名被截断 / Fix: compressed cards had a damaged MaterialEditor key**
+
+材质贴图字典小于 64 KB 时，游戏用 bin16（3 字节头）存它，而写回时按固定 5 字节（bin32）头回退，
+把键名 `TextureDictionary` 的最后两个字符 `ry` 覆盖掉了。结果这张卡的扩展数据（KKEx）无法被严格的 msgpack 解析器读取
+（例如 kkloader：`'utf-8' codec can't decode byte ...`）。现在按原头的真实长度（bin8/16/32）回退。
+
+When a card's MaterialEditor texture dictionary is under 64 KB, the game stores it with a 3-byte bin16 header, but the
+tool assumed a 5-byte bin32 header when splicing the compressed data back, so the last two characters of the
+`TextureDictionary` key were overwritten. Strict msgpack readers (e.g. kkloader) then fail on the card's extended data.
+The tool now backs up by the real header length (bin8/16/32). Cards compressed by earlier versions stay damaged;
+restoring `ry` (`b1 "TextureDictiona" c6` → `b1 "TextureDictionary" c6`) repairs them.
+
+**修复：压缩后卡头里的块大小 / 数据长度不更新 / Fix: block size and data length were not updated**
+
+压缩会改变最后一个数据块（KKEx）的大小，但卡头里记录的块大小（`lstInfo` 的 `size`）和数据总长度一直是原值。
+现在写出卡片后会同步更新这两个数字（以及排在后面的块的 `pos`；整数需要更宽的编码时卡头长度也一并更新）。认不出布局的卡原样不动。
+
+Compressing changes the size of the last data block (KKEx), but the block size in the card's `lstInfo` table and
+the overall data length kept their old values, so the card disagreed with its own header. They are now updated
+after the card is written (plus the `pos` of any block behind it, and the header length when an integer needs a
+wider encoding). A card whose layout isn't recognised is written as before.
+
+**同步更新：删除贴图 / Also applied to texture deletion**
+
+「删除选中贴图」同样会改变 KKEx 块大小，现在写出后也同步卡头里的块大小与数据长度。
+
+Deleting textures also changes the size of the KKEx block, so it now updates the block table and data length in the card header the same way.
+
 ## 1.2.0
 
 **新功能：贴图导出 / 用途识别 / 删除贴图**
