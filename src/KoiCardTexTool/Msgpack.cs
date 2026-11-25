@@ -254,6 +254,21 @@ namespace KoiCardTexTool
             return new byte[] { 0xc6, (byte)(len >> 24), (byte)(len >> 16), (byte)(len >> 8), (byte)len };
         }
 
+        /// <summary>Replace the bin at <paramref name="bin"/> (whatever header form it had: bin8/16/32) with
+        /// <paramref name="payload"/>, written as a bin32. Returns the new array; <paramref name="spliceAt"/> is
+        /// where it starts to differ from <paramref name="b"/> (the start of the old bin header).</summary>
+        public static byte[] ReplaceBin(byte[] b, BinRef bin, byte[] payload, out int spliceAt)
+        {
+            spliceAt = bin.Off - bin.HeaderLen;           // not a fixed 5: a bin8/bin16 header is shorter
+            int tail = bin.Off + bin.Len;
+            var o = new byte[spliceAt + 5 + payload.Length + (b.Length - tail)];
+            Buffer.BlockCopy(b, 0, o, 0, spliceAt);
+            Buffer.BlockCopy(Bin32Header(payload.Length), 0, o, spliceAt, 5);
+            Buffer.BlockCopy(payload, 0, o, spliceAt + 5, payload.Length);
+            Buffer.BlockCopy(b, tail, o, spliceAt + 5 + payload.Length, b.Length - tail);
+            return o;
+        }
+
         public static byte[] Bin32(byte[] data)
         {
             var o = new byte[5 + data.Length];
